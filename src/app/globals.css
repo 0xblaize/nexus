@@ -1,0 +1,246 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: #000;
+  color: #fff;
+  font-family: "Syne", sans-serif;
+  overflow-x: hidden;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+@media (pointer: fine) {
+  body,
+  a,
+  button,
+  input,
+  textarea,
+  select {
+    cursor: none !important;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c8ff00;
+  border-radius: 999px;
+  border: 3px solid #000;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #e3ff66;
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes pulseGlow {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes ticker {
+  0% {
+    transform: translateX(0);
+  }
+
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes scanline {
+  0% {
+    top: -2px;
+  }
+
+  100% {
+    top: 100%;
+  }
+}
+
+.font-bebas {
+  font-family: "Bebas Neue", cursive !important;
+}
+
+.font-mono {
+  font-family: "DM Mono", monospace !important;
+}
+
+.font-hand {
+  font-family: "Patrick Hand SC", cursive !important;
+}
+
+.font-syne {
+  font-family: "Syne", sans-serif !important;
+}
+
+.animate-fade-up {
+  animation: fadeUp 0.45s ease forwards;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.35s ease forwards;
+}
+
+.animate-blink {
+  animation: blink 1s step-end infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 2s ease infinite;
+}
+
+.animate-spin-slow {
+  animation: spin 2s linear infinite;
+}
+
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(200, 255, 0, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(200, 255, 0, 0.025) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.scanline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(200, 255, 0, 0.06), transparent);
+  animation: scanline 5s linear infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+  background:
+    radial-gradient(circle at top, rgba(200, 255, 0, 0.12), transparent 25rem),
+    #000;
+}
+
+.auth-card {
+  width: min(100%, 28rem);
+  border: 1px solid #1a1a22;
+  background: rgba(10, 10, 13, 0.92);
+  padding: 2rem;
+}
+
+.auth-eyebrow {
+  font-family: "DM Mono", monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  color: #c8ff00;
+  text-transform: uppercase;
+}
+
+.auth-title {
+  font-family: "Bebas Neue", cursive;
+  font-size: clamp(2.8rem, 7vw, 4.4rem);
+  line-height: 0.95;
+  margin: 1rem 0;
+}
+
+.auth-copy {
+  color: #777;
+  line-height: 1.7;
+  margin-bottom: 1.5rem;
+}
+
+.auth-button {
+  width: 100%;
+  background: #c8ff00;
+  color: #000;
+  border: none;
+  padding: 0.95rem 1rem;
+  text-transform: uppercase;
+  font-family: "DM Mono", monospace;
+  letter-spacing: 0.1em;
+}
+
+.auth-warning {
+  border: 1px solid rgba(255, 153, 0, 0.35);
+  background: rgba(255, 153, 0, 0.08);
+  color: #ffcf85;
+  padding: 0.9rem 1rem;
+  font-family: "DM Mono", monospace;
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.auth-link {
+  display: inline-block;
+  margin-top: 1rem;
+  color: #666;
+  text-decoration: none;
+  font-family: "DM Mono", monospace;
+  font-size: 0.82rem;
+}
