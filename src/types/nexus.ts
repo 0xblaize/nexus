@@ -111,6 +111,24 @@ export interface StoredWatchlistEntry {
   createdAt: string;
 }
 
+export interface SettingsData {
+  displayName: string;
+  email: string;
+  scoreThreshold: number;
+  refreshInterval: "1h" | "3h" | "6h" | "12h" | "24h";
+  weeklyDigest: boolean;
+  teamsEnabled: boolean;
+  teamsWebhook: string;
+  emailAlerts: boolean;
+  slackAlerts: boolean;
+  darkMode: boolean;
+  language: string;
+  currentPlan: string;
+  usageUsed: number;
+  usageTotal: number;
+  version: string;
+}
+
 export interface SignalFeedItem {
   id: string;
   company: string;

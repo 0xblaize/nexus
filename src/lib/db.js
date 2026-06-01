@@ -4,6 +4,24 @@ import { join } from "path";
 
 const DB_PATH = join(process.cwd(), "nexus-reports.json");
 
+const DEFAULT_SETTINGS = {
+  displayName: "NEXUS Operator",
+  email: "operator@nexus.local",
+  scoreThreshold: 65,
+  refreshInterval: "6h",
+  weeklyDigest: true,
+  teamsEnabled: Boolean(process.env.TEAMS_WEBHOOK_URL),
+  teamsWebhook: process.env.TEAMS_WEBHOOK_URL || "",
+  emailAlerts: true,
+  slackAlerts: false,
+  darkMode: true,
+  language: "English",
+  currentPlan: "Pro analyst",
+  usageUsed: 0,
+  usageTotal: 25000,
+  version: "1.0.0",
+};
+
 function normalizeReport(report) {
   if (!report || typeof report !== "object") {
     return null;
@@ -51,8 +69,57 @@ function normalizeWatchlistEntry(entry) {
   };
 }
 
+function normalizeSettings(settings) {
+  const source = settings && typeof settings === "object" ? settings : {};
+
+  return {
+    displayName:
+      typeof source.displayName === "string" && source.displayName.trim()
+        ? source.displayName
+        : DEFAULT_SETTINGS.displayName,
+    email:
+      typeof source.email === "string" && source.email.trim()
+        ? source.email
+        : DEFAULT_SETTINGS.email,
+    scoreThreshold:
+      typeof source.scoreThreshold === "number" ? source.scoreThreshold : DEFAULT_SETTINGS.scoreThreshold,
+    refreshInterval:
+      ["1h", "3h", "6h", "12h", "24h"].includes(source.refreshInterval)
+        ? source.refreshInterval
+        : DEFAULT_SETTINGS.refreshInterval,
+    weeklyDigest:
+      typeof source.weeklyDigest === "boolean" ? source.weeklyDigest : DEFAULT_SETTINGS.weeklyDigest,
+    teamsEnabled:
+      typeof source.teamsEnabled === "boolean" ? source.teamsEnabled : DEFAULT_SETTINGS.teamsEnabled,
+    teamsWebhook:
+      typeof source.teamsWebhook === "string" ? source.teamsWebhook : DEFAULT_SETTINGS.teamsWebhook,
+    emailAlerts:
+      typeof source.emailAlerts === "boolean" ? source.emailAlerts : DEFAULT_SETTINGS.emailAlerts,
+    slackAlerts:
+      typeof source.slackAlerts === "boolean" ? source.slackAlerts : DEFAULT_SETTINGS.slackAlerts,
+    darkMode:
+      typeof source.darkMode === "boolean" ? source.darkMode : DEFAULT_SETTINGS.darkMode,
+    language:
+      typeof source.language === "string" && source.language.trim()
+        ? source.language
+        : DEFAULT_SETTINGS.language,
+    currentPlan:
+      typeof source.currentPlan === "string" && source.currentPlan.trim()
+        ? source.currentPlan
+        : DEFAULT_SETTINGS.currentPlan,
+    usageUsed:
+      typeof source.usageUsed === "number" ? source.usageUsed : DEFAULT_SETTINGS.usageUsed,
+    usageTotal:
+      typeof source.usageTotal === "number" ? source.usageTotal : DEFAULT_SETTINGS.usageTotal,
+    version:
+      typeof source.version === "string" && source.version.trim()
+        ? source.version
+        : DEFAULT_SETTINGS.version,
+  };
+}
+
 function loadDB() {
-  if (!existsSync(DB_PATH)) return { reports: [], watchlist: [] };
+  if (!existsSync(DB_PATH)) return { reports: [], watchlist: [], settings: DEFAULT_SETTINGS };
 
   try {
     const parsed = JSON.parse(readFileSync(DB_PATH, "utf-8"));
@@ -63,9 +130,11 @@ function loadDB() {
       ? parsed.watchlist.map(normalizeWatchlistEntry).filter(Boolean)
       : [];
 
-    return { reports, watchlist };
+    const settings = normalizeSettings(parsed?.settings);
+
+    return { reports, watchlist, settings };
   } catch {
-    return { reports: [], watchlist: [] };
+    return { reports: [], watchlist: [], settings: DEFAULT_SETTINGS };
   }
 }
 
@@ -166,4 +235,19 @@ export async function removeWatchlistCompany(company) {
   db.watchlist = db.watchlist.filter((item) => item.company.toLowerCase() !== companyKey);
   saveDB(db);
   return true;
+}
+
+export async function getSettings() {
+  const db = loadDB();
+  return db.settings;
+}
+
+export async function updateSettings(partialSettings) {
+  const db = loadDB();
+  db.settings = normalizeSettings({
+    ...db.settings,
+    ...partialSettings,
+  });
+  saveDB(db);
+  return db.settings;
 }

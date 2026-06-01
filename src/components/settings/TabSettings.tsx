@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import type { SettingsData } from "@/types/nexus";
+
 const PRESETS = [
   { label: "Sensitive", value: 50 },
   { label: "Default", value: 65 },
@@ -11,26 +13,43 @@ const PRESETS = [
 const REFRESH_OPTIONS = ["1h", "3h", "6h", "12h", "24h"] as const;
 const LANGUAGES = ["English", "French", "German", "Spanish"] as const;
 
-export function TabSettings() {
-  const [displayName, setDisplayName] = useState("Nexus Operator");
-  const [email, setEmail] = useState("operator@nexus.local");
-  const [scoreThreshold, setScoreThreshold] = useState(65);
-  const [refreshInterval, setRefreshInterval] = useState<(typeof REFRESH_OPTIONS)[number]>("6h");
-  const [weeklyDigest, setWeeklyDigest] = useState(true);
-  const [teamsEnabled, setTeamsEnabled] = useState(true);
-  const [teamsWebhook, setTeamsWebhook] = useState("https://outlook.office.com/webhook/...");
-  const [emailAlerts, setEmailAlerts] = useState(true);
-  const [slackAlerts, setSlackAlerts] = useState(false);
-  const [darkMode, setDarkMode] = useState(true);
-  const [language, setLanguage] = useState<(typeof LANGUAGES)[number]>("English");
+export function TabSettings({ initialSettings }: { initialSettings: SettingsData }) {
+  const [settings, setSettings] = useState<SettingsData>(initialSettings);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const [error, setError] = useState("");
+
+  function update<K extends keyof SettingsData>(key: K, value: SettingsData[K]) {
+    setSettings((current) => ({ ...current, [key]: value }));
+  }
 
   async function handleSave() {
     setSaveState("saving");
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    setSaveState("saved");
-    window.setTimeout(() => setSaveState("idle"), 2500);
+    setError("");
+
+    try {
+      const response = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settings),
+      });
+
+      if (!response.ok) {
+        throw new Error("Unable to save settings.");
+      }
+
+      const payload = (await response.json()) as { settings: SettingsData };
+      setSettings(payload.settings);
+      setSaveState("saved");
+      window.setTimeout(() => setSaveState("idle"), 2500);
+    } catch (saveError) {
+      setSaveState("idle");
+      setError(saveError instanceof Error ? saveError.message : "Unable to save settings.");
+    }
   }
+
+  const usagePercent = settings.usageTotal
+    ? Math.max(0, Math.min(100, Math.round((settings.usageUsed / settings.usageTotal) * 100)))
+    : 0;
 
   return (
     <div className="mx-auto w-full max-w-[680px]" style={{ paddingTop: 2, zoom: 0.9 }}>
@@ -54,13 +73,19 @@ export function TabSettings() {
         </p>
       </div>
 
+      {error ? (
+        <div className="mb-6 border border-[#ff2d2d]/40 bg-[#ff2d2d]/5 px-5 py-4 font-mono text-[12px] tracking-[0.04em] text-[#ff9999]">
+          {error}
+        </div>
+      ) : null}
+
       <div className="space-y-6">
         <Section title="Profile">
           <Row label="Display name">
-            <Input value={displayName} onChange={setDisplayName} />
+            <Input value={settings.displayName} onChange={(value) => update("displayName", value)} />
           </Row>
           <Row label="Email address">
-            <Input value={email} onChange={setEmail} />
+            <Input value={settings.email} onChange={(value) => update("email", value)} />
           </Row>
           <Row description="Update your login password and security settings." label="Password">
             <button className="border border-[#23283f] px-5 py-3 font-mono text-[13px] uppercase tracking-[0.1em] text-[#c8d2ff]" type="button">
@@ -76,11 +101,13 @@ export function TabSettings() {
                 className="w-[240px] accent-[#c8ff00]"
                 max={95}
                 min={30}
-                onChange={(event) => setScoreThreshold(Number(event.target.value))}
+                onChange={(event) => update("scoreThreshold", Number(event.target.value))}
                 type="range"
-                value={scoreThreshold}
+                value={settings.scoreThreshold}
               />
-              <span className="font-bebas text-[44px] leading-none text-[#d6ff1b]">{scoreThreshold}</span>
+              <span className="font-bebas text-[44px] leading-none text-[#d6ff1b]">
+                {settings.scoreThreshold}
+              </span>
             </div>
           </Row>
           <div className="flex flex-wrap gap-3 px-6 pb-6">
@@ -88,12 +115,12 @@ export function TabSettings() {
               <button
                 className={[
                   "border px-4 py-2 font-mono text-[13px] uppercase tracking-[0.1em]",
-                  scoreThreshold === preset.value
+                  settings.scoreThreshold === preset.value
                     ? "border-[#4f5b13] bg-[#182000] text-[#dfff4c]"
                     : "border-[#23232c] text-[#666]",
                 ].join(" ")}
                 key={preset.label}
-                onClick={() => setScoreThreshold(preset.value)}
+                onClick={() => update("scoreThreshold", preset.value)}
                 type="button"
               >
                 {preset.label} {preset.value}
@@ -109,12 +136,12 @@ export function TabSettings() {
                 <button
                   className={[
                     "border px-4 py-2 font-mono text-[13px] uppercase tracking-[0.1em]",
-                    refreshInterval === option
+                    settings.refreshInterval === option
                       ? "border-[#4f5b13] bg-[#182000] text-[#dfff4c]"
                       : "border-[#23232c] text-[#666]",
                   ].join(" ")}
                   key={option}
-                  onClick={() => setRefreshInterval(option)}
+                  onClick={() => update("refreshInterval", option)}
                   type="button"
                 >
                   {option}
@@ -123,37 +150,37 @@ export function TabSettings() {
             </div>
           </Row>
           <Row description="Send a weekly summary of changes across monitored companies." label="Weekly digest">
-            <Toggle checked={weeklyDigest} onChange={setWeeklyDigest} />
+            <Toggle checked={settings.weeklyDigest} onChange={(value) => update("weeklyDigest", value)} />
           </Row>
         </Section>
 
         <Section title="Alert Delivery">
           <Row description="Push new acquisition alerts directly into your Teams channel." label="Microsoft Teams">
-            <Toggle checked={teamsEnabled} onChange={setTeamsEnabled} />
+            <Toggle checked={settings.teamsEnabled} onChange={(value) => update("teamsEnabled", value)} />
           </Row>
-          {teamsEnabled ? (
+          {settings.teamsEnabled ? (
             <div className="border-t border-[#15151c] px-6 py-5">
               <div className="mb-2 font-mono text-[12px] tracking-[0.12em] text-[#555]">Teams webhook URL</div>
-              <Input value={teamsWebhook} onChange={setTeamsWebhook} />
+              <Input value={settings.teamsWebhook} onChange={(value) => update("teamsWebhook", value)} />
             </div>
           ) : null}
           <Row description="Send the same alert packets to your primary email inbox." label="Email alerts">
-            <Toggle checked={emailAlerts} onChange={setEmailAlerts} />
+            <Toggle checked={settings.emailAlerts} onChange={(value) => update("emailAlerts", value)} />
           </Row>
           <Row description="Mirror signal events into Slack for the deal team." label="Slack notifications">
-            <Toggle checked={slackAlerts} onChange={setSlackAlerts} />
+            <Toggle checked={settings.slackAlerts} onChange={(value) => update("slackAlerts", value)} />
           </Row>
         </Section>
 
         <Section title="Appearance">
           <Row description="This application is designed for dark mode." label="Dark mode">
-            <Toggle checked={darkMode} onChange={setDarkMode} />
+            <Toggle checked={settings.darkMode} onChange={(value) => update("darkMode", value)} />
           </Row>
           <Row label="Language">
             <select
               className="h-[48px] min-w-[220px] border border-[#23232c] bg-[#101015] px-4 font-mono text-[14px] text-[#b7b7bd] outline-none"
-              onChange={(event) => setLanguage(event.target.value as (typeof LANGUAGES)[number])}
-              value={language}
+              onChange={(event) => update("language", event.target.value)}
+              value={settings.language}
             >
               {LANGUAGES.map((option) => (
                 <option key={option} value={option}>
@@ -167,18 +194,20 @@ export function TabSettings() {
         <Section title="Account And Plan">
           <Row label="Current plan">
             <span className="border border-[#4f5b13] bg-[#182000] px-4 py-2 font-mono text-[13px] uppercase tracking-[0.1em] text-[#dfff4c]">
-              Pro analyst
+              {settings.currentPlan}
             </span>
           </Row>
           <div className="border-t border-[#15151c] px-6 py-5">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <div className="font-mono text-[14px] text-[#777]">API usage</div>
-                <div className="mt-2 font-mono text-[13px] tracking-[0.08em] text-[#555]">12,400 / 25,000 signals</div>
+                <div className="mt-2 font-mono text-[13px] tracking-[0.08em] text-[#555]">
+                  {settings.usageUsed.toLocaleString()} / {settings.usageTotal.toLocaleString()} signals
+                </div>
               </div>
             </div>
             <div className="mt-4 h-3 bg-[#111118]">
-              <div className="h-full w-[49%] bg-[#c8ff00]" />
+              <div className="h-full bg-[#c8ff00]" style={{ width: `${usagePercent}%` }} />
             </div>
           </div>
           <Row label="Billing">
@@ -187,16 +216,14 @@ export function TabSettings() {
             </button>
           </Row>
           <div className="border-t border-[#15151c] px-6 py-5 font-mono text-[12px] uppercase tracking-[0.12em] text-[#4d4d54]">
-            Version 1.0.0 - build 2026.06.01
+            Version {settings.version}
           </div>
         </Section>
 
         <button
           className={[
             "w-full px-6 py-5 text-center font-mono text-[18px] uppercase tracking-[0.16em] transition-colors",
-            saveState === "saved"
-              ? "bg-[#28c840] text-black"
-              : "bg-[#c8ff00] text-black",
+            saveState === "saved" ? "bg-[#28c840] text-black" : "bg-[#c8ff00] text-black",
           ].join(" ")}
           onClick={handleSave}
           type="button"
