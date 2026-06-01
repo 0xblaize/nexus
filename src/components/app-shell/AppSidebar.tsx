@@ -17,7 +17,7 @@ const navItems = [
   { label: "Watchlist", href: "/watchlist", icon: "()", badgeKey: "monitoredCompanies", danger: false, enabled: true },
   { label: "Reports", href: "/reports", icon: "||", badgeKey: "reportCount", danger: false, enabled: true },
   { label: "Signals Feed", href: "/signals", icon: "::", badge: "LIVE", danger: true, enabled: true },
-  { label: "Settings", href: "/settings", icon: "--", badge: null, danger: false, enabled: false },
+  { label: "Settings", href: "/settings", icon: "--", badge: null, danger: false, enabled: true },
 ] as const;
 
 export function AppSidebar({ activeItem = "Analyze", stats, width = 320 }: AppSidebarProps) {
