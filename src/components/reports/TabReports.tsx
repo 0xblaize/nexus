@@ -1,5 +1,9 @@
+"use client";
+
+import { useMemo, useState } from "react";
+
 import type { Report, SignalType } from "@/types/nexus";
-import { getScoreColor, getScoreLabel, getSignalColor, SIGNAL_LABELS } from "@/components/analyze/analyze-utils";
+import { getScoreColor, getScoreLabel, getSignalColor } from "@/components/analyze/analyze-utils";
 
 interface TabReportsProps {
   reports: Report[];
@@ -9,6 +13,50 @@ const FILTERS = ["ALL", "HIGH", "MED", "LOW"] as const;
 const BREAKDOWN_ORDER: SignalType[] = ["regulatory", "personnel", "hiring", "news"];
 
 export function TabReports({ reports }: TabReportsProps) {
+  const [activeFilter, setActiveFilter] = useState<(typeof FILTERS)[number]>("ALL");
+  const [expandedId, setExpandedId] = useState<string | null>(reports[0]?.id ?? null);
+  const [teamsBusy, setTeamsBusy] = useState<string | null>(null);
+
+  const filteredReports = useMemo(() => {
+    return reports.filter((report) => {
+      if (activeFilter === "ALL") return true;
+      if (activeFilter === "HIGH") return report.score >= 70;
+      if (activeFilter === "MED") return report.score >= 50 && report.score < 70;
+      return report.score < 50;
+    });
+  }, [activeFilter, reports]);
+
+  async function sendToTeams(report: Report) {
+    if (!report.memo) return;
+
+    setTeamsBusy(report.id);
+
+    try {
+      await fetch("/api/teams", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company: report.company,
+          score: report.score,
+          memo: report.memo,
+        }),
+      });
+    } finally {
+      setTeamsBusy(null);
+    }
+  }
+
+  function exportMemo(report: Report) {
+    const content = report.memo?.text ?? report.keyInsight ?? "No memo generated.";
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${report.company.replace(/\s+/g, "-").toLowerCase()}-memo.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="w-full max-w-[994px]" style={{ paddingTop: 2, zoom: 0.9 }}>
       <div className="mb-10 flex items-start justify-between gap-6">
@@ -28,20 +76,21 @@ export function TabReports({ reports }: TabReportsProps) {
             HISTORY
           </h1>
           <p className="mt-2 font-mono text-[16px] tracking-[0.01em] text-[#56565d]">
-            {reports.length} total reports - sorted by recency
+            {filteredReports.length} total reports - sorted by recency
           </p>
         </header>
 
         <div className="mt-6 flex shrink-0 gap-3">
-          {FILTERS.map((filter, index) => (
+          {FILTERS.map((filter) => (
             <button
               className={[
                 "h-[48px] min-w-[88px] border px-6 font-mono text-[15px] uppercase tracking-[0.12em]",
-                index === 0
+                activeFilter === filter
                   ? "border-[#4f5b13] bg-[#182000] text-[#dfff4c]"
                   : "border-[#23232c] text-[#444]",
               ].join(" ")}
               key={filter}
+              onClick={() => setActiveFilter(filter)}
               type="button"
             >
               {filter}
@@ -51,15 +100,37 @@ export function TabReports({ reports }: TabReportsProps) {
       </div>
 
       <div className="space-y-4">
-        {reports.map((report, index) => (
-          <ReportCard expanded={index === 0} key={report.id} report={report} />
+        {filteredReports.map((report) => (
+          <ReportCard
+            expanded={expandedId === report.id}
+            key={report.id}
+            onExportMemo={() => exportMemo(report)}
+            onSendToTeams={() => sendToTeams(report)}
+            onToggle={() => setExpandedId(expandedId === report.id ? null : report.id)}
+            report={report}
+            teamsBusy={teamsBusy === report.id}
+          />
         ))}
       </div>
     </div>
   );
 }
 
-function ReportCard({ report, expanded }: { report: Report; expanded: boolean }) {
+function ReportCard({
+  report,
+  expanded,
+  onToggle,
+  onSendToTeams,
+  onExportMemo,
+  teamsBusy,
+}: {
+  report: Report;
+  expanded: boolean;
+  onToggle: () => void;
+  onSendToTeams: () => void;
+  onExportMemo: () => void;
+  teamsBusy: boolean;
+}) {
   const scoreColor = getScoreColor(report.score);
   const signalCount = Array.isArray(report.signals) ? report.signals.length : 0;
   const sparkPoints = buildSparklinePoints(report.score, report.prevScore ?? report.score);
@@ -72,7 +143,11 @@ function ReportCard({ report, expanded }: { report: Report; expanded: boolean })
         expanded ? "border-[#3e5300]" : "border-[#23232c]",
       ].join(" ")}
     >
-      <div className="grid min-h-[92px] grid-cols-[1.6fr_44px_180px_160px_180px_110px_34px] items-center gap-4 px-6">
+      <button
+        className="grid min-h-[92px] w-full grid-cols-[1.6fr_44px_180px_160px_180px_110px_34px] items-center gap-4 px-6 text-left"
+        onClick={onToggle}
+        type="button"
+      >
         <div className="flex min-w-0 items-center gap-5">
           <span
             className="h-4 w-4 shrink-0 rounded-full shadow-[0_0_16px_currentColor]"
@@ -87,12 +162,7 @@ function ReportCard({ report, expanded }: { report: Report; expanded: boolean })
 
         <div className="h-[56px]">
           <svg className="h-full w-full" viewBox="0 0 180 56" xmlns="http://www.w3.org/2000/svg">
-            <polyline
-              fill="none"
-              points={sparkPoints}
-              stroke={scoreColor}
-              strokeWidth="3"
-            />
+            <polyline fill="none" points={sparkPoints} stroke={scoreColor} strokeWidth="3" />
             <line x1="0" x2="180" y1="52" y2="52" stroke={scoreColor} strokeOpacity="0.28" />
           </svg>
         </div>
@@ -113,10 +183,8 @@ function ReportCard({ report, expanded }: { report: Report; expanded: boolean })
 
         <div className="font-mono text-[15px] text-[#56565d]">{signalCount} signals</div>
 
-        <div className="text-right font-mono text-[18px] text-[#4b4b50]">
-          {expanded ? "-" : "+"}
-        </div>
-      </div>
+        <div className="text-right font-mono text-[18px] text-[#4b4b50]">{expanded ? "-" : "+"}</div>
+      </button>
 
       {expanded ? (
         <div className="border-t border-[#171a0d] px-6 py-6">
@@ -147,11 +215,20 @@ function ReportCard({ report, expanded }: { report: Report; expanded: boolean })
                 INVESTMENT MEMO
               </div>
               <div className="flex gap-3">
-                <button className="border border-[#23283f] px-5 py-3 font-mono text-[13px] uppercase tracking-[0.1em] text-[#4b4f66]" type="button">
-                  TEAMS
+                <button
+                  className="border border-[#23283f] px-5 py-3 font-mono text-[13px] uppercase tracking-[0.1em] text-[#4b4f66] disabled:opacity-40"
+                  disabled={!report.memo || teamsBusy}
+                  onClick={onSendToTeams}
+                  type="button"
+                >
+                  {teamsBusy ? "SENDING" : "TEAMS"}
                 </button>
-                <button className="border border-[#23283f] px-5 py-3 font-mono text-[13px] uppercase tracking-[0.1em] text-[#4b4f66]" type="button">
-                  PDF
+                <button
+                  className="border border-[#23283f] px-5 py-3 font-mono text-[13px] uppercase tracking-[0.1em] text-[#4b4f66]"
+                  onClick={onExportMemo}
+                  type="button"
+                >
+                  EXPORT
                 </button>
               </div>
             </div>

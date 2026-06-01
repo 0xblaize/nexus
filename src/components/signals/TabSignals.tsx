@@ -1,3 +1,7 @@
+"use client";
+
+import { useMemo, useState } from "react";
+
 import type { DashboardSignalSummary, SignalFeedItem, SignalType } from "@/types/nexus";
 import { SIGNAL_LABELS, getSignalColor } from "@/components/analyze/analyze-utils";
 import { formatAgo } from "@/lib/dashboard-helpers";
@@ -7,18 +11,26 @@ interface TabSignalsProps {
   summary: DashboardSignalSummary[];
 }
 
-const FILTERS = [
-  { label: "LIVE", tone: "#ff2d2d" },
-  { label: "ALL", tone: "#c8ff00" },
-  { label: "REG", tone: "#444" },
-  { label: "EXEC", tone: "#444" },
-  { label: "HIRE", tone: "#444" },
-  { label: "NEWS", tone: "#444" },
-] as const;
+const FILTERS = ["LIVE", "ALL", "REG", "EXEC", "HIRE", "NEWS"] as const;
 
 export function TabSignals({ feed, summary }: TabSignalsProps) {
-  const totalSignals = feed.length;
-  const newSignals = feed.filter((item) => {
+  const [activeFilter, setActiveFilter] = useState<(typeof FILTERS)[number]>("ALL");
+
+  const filteredFeed = useMemo(() => {
+    return feed.filter((item) => {
+      if (activeFilter === "ALL") return true;
+      if (activeFilter === "LIVE") {
+        return Date.now() - new Date(item.scrapedAt).getTime() <= 24 * 60 * 60 * 1000;
+      }
+      if (activeFilter === "REG") return item.type === "regulatory";
+      if (activeFilter === "EXEC") return item.type === "personnel";
+      if (activeFilter === "HIRE") return item.type === "hiring";
+      return item.type === "news";
+    });
+  }, [activeFilter, feed]);
+
+  const totalSignals = filteredFeed.length;
+  const newSignals = filteredFeed.filter((item) => {
     const ageMs = Date.now() - new Date(item.scrapedAt).getTime();
     return ageMs <= 24 * 60 * 60 * 1000;
   }).length;
@@ -48,21 +60,21 @@ export function TabSignals({ feed, summary }: TabSignalsProps) {
         </header>
 
         <div className="mt-6 flex shrink-0 flex-wrap justify-end gap-3 max-w-[420px]">
-          {FILTERS.map((filter, index) => (
+          {FILTERS.map((filter) => (
             <button
               className={[
                 "h-[48px] min-w-[88px] border px-6 font-mono text-[15px] uppercase tracking-[0.12em]",
-                index === 0
-                  ? "border-[#5c1212] bg-[rgba(66,11,11,0.25)] text-[#ff4040]"
-                  : index === 1
-                    ? "border-[#4f5b13] bg-[#182000] text-[#dfff4c]"
-                    : "border-[#23232c] text-[#444]",
+                activeFilter === filter
+                  ? filter === "LIVE"
+                    ? "border-[#5c1212] bg-[rgba(66,11,11,0.25)] text-[#ff4040]"
+                    : "border-[#4f5b13] bg-[#182000] text-[#dfff4c]"
+                  : "border-[#23232c] text-[#444]",
               ].join(" ")}
-              key={filter.label}
+              key={filter}
+              onClick={() => setActiveFilter(filter)}
               type="button"
             >
-              {index === 0 ? "• " : ""}
-              {filter.label}
+              {filter === "LIVE" ? ". LIVE" : filter}
             </button>
           ))}
         </div>
@@ -75,7 +87,7 @@ export function TabSignals({ feed, summary }: TabSignalsProps) {
       </section>
 
       <section className="mt-7 overflow-hidden border border-[#23232c] bg-black/20">
-        {feed.map((item, index) => (
+        {filteredFeed.map((item, index) => (
           <SignalFeedRow item={item} key={`${item.id}-${index}`} />
         ))}
       </section>
@@ -128,9 +140,7 @@ function SignalFeedRow({ item }: { item: SignalFeedItem }) {
       </div>
 
       <div className="pr-6 text-[15px] text-white">{item.title}</div>
-
       <div className="pr-6 text-[15px] text-white">{item.company}</div>
-
       <div className="text-right text-[14px] text-[#555]">
         {item.source} {formatAgo(item.scrapedAt)} w:{item.weight}
       </div>
