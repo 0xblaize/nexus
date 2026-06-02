@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { SettingsData } from "@/types/nexus";
+import { TeamManagement } from "./TeamManagement";
 
 const PRESETS = [
   { label: "Sensitive", value: 50 },
@@ -24,13 +25,10 @@ function isPaidPlan(plan: string) {
 }
 
 function mergeSessionSettings(settings: SettingsData, sessionUser: SessionUserSettings | null): SettingsData {
-  if (!sessionUser) return settings;
-  const paidPlan = isPaidPlan(sessionUser.plan);
+  const paidPlan = sessionUser ? isPaidPlan(sessionUser.plan) : isPaidPlan(settings.currentPlan);
 
   return {
     ...settings,
-    displayName: sessionUser.name || settings.displayName,
-    email: sessionUser.email || settings.email,
     currentPlan: paidPlan ? "Pro analyst" : "Free developer",
     teamsEnabled: paidPlan ? settings.teamsEnabled : false,
     teamsWebhook: paidPlan ? settings.teamsWebhook : "",
@@ -49,7 +47,7 @@ export function TabSettings({
     mergeSessionSettings(initialSettings, sessionUser),
   );
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
-  const [utilityBusy, setUtilityBusy] = useState<"" | "password" | "billing" | "checkout">("");
+  const [utilityBusy, setUtilityBusy] = useState<"" | "billing" | "checkout">("");
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [error, setError] = useState("");
@@ -124,10 +122,10 @@ export function TabSettings({
     await persistSettings(settings);
   }
 
-  async function runUtilityAction(action: "change-password" | "billing-portal") {
+  async function runUtilityAction(action: "billing-portal") {
     setError("");
     setNotice("");
-    setUtilityBusy(action === "change-password" ? "password" : "billing");
+    setUtilityBusy("billing");
 
     try {
       const response = await fetch("/api/settings/utilities", {
@@ -281,16 +279,6 @@ export function TabSettings({
           <Row label="Email address">
             <Input value={settings.email} onChange={(value) => update("email", value)} />
           </Row>
-          <Row description="Update your login password and security settings." label="Password">
-            <button
-              className="border border-[#23283f] px-5 py-3 font-mono text-[13px] uppercase tracking-[0.1em] text-[#c8d2ff] disabled:opacity-50"
-              disabled={utilityBusy === "password"}
-              onClick={() => runUtilityAction("change-password")}
-              type="button"
-            >
-              {utilityBusy === "password" ? "[...] Opening" : "[!] Change Password"}
-            </button>
-          </Row>
         </Section>
 
         <Section title="Alert Thresholds">
@@ -395,6 +383,12 @@ export function TabSettings({
                 onUpgradeClick={handleUpgradeClick}
               />
             ) : null}
+          </div>
+        </Section>
+
+        <Section title="Team Members">
+          <div className="px-6 py-5">
+            <TeamManagement />
           </div>
         </Section>
 

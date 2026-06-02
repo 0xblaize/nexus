@@ -11,7 +11,7 @@ interface TabSignalsProps {
   summary: DashboardSignalSummary[];
 }
 
-const FILTERS = ["LIVE", "ALL", "REG", "EXEC", "HIRE", "NEWS"] as const;
+const FILTERS = ["LIVE", "ALL", "REG", "EXEC", "HIRE", "PAT", "NEWS", "IR"] as const;
 
 export function TabSignals({ feed, summary }: TabSignalsProps) {
   const [activeFilter, setActiveFilter] = useState<(typeof FILTERS)[number]>("ALL");
@@ -25,7 +25,10 @@ export function TabSignals({ feed, summary }: TabSignalsProps) {
       if (activeFilter === "REG") return item.type === "regulatory";
       if (activeFilter === "EXEC") return item.type === "personnel";
       if (activeFilter === "HIRE") return item.type === "hiring";
-      return item.type === "news";
+      if (activeFilter === "PAT") return item.type === "patents";
+      if (activeFilter === "NEWS") return item.type === "news";
+      if (activeFilter === "IR") return item.type === "ir_traffic";
+      return false;
     });
   }, [activeFilter, feed]);
 
@@ -80,7 +83,7 @@ export function TabSignals({ feed, summary }: TabSignalsProps) {
         </div>
       </div>
 
-      <section className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+      <section className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
         {summary.map((item) => (
           <SignalMetricCard key={item.type} item={item} />
         ))}
@@ -158,5 +161,7 @@ function signalShortLabel(type: SignalType) {
   if (type === "regulatory") return "REG";
   if (type === "personnel") return "EXEC";
   if (type === "hiring") return "HIRE";
-  return "NEWS";
+  if (type === "patents") return "PAT";
+  if (type === "news") return "NEWS";
+  return "IR";
 }

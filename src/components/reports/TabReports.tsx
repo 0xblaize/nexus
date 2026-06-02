@@ -10,7 +10,7 @@ interface TabReportsProps {
 }
 
 const FILTERS = ["ALL", "HIGH", "MED", "LOW"] as const;
-const BREAKDOWN_ORDER: SignalType[] = ["regulatory", "personnel", "hiring", "news"];
+const BREAKDOWN_ORDER: SignalType[] = ["regulatory", "personnel", "hiring", "patents", "news", "ir_traffic"];
 
 export function TabReports({ reports }: TabReportsProps) {
   const [activeFilter, setActiveFilter] = useState<(typeof FILTERS)[number]>("ALL");
@@ -188,7 +188,7 @@ function ReportCard({
 
       {expanded ? (
         <div className="border-t border-[#171a0d] px-6 py-6">
-          <div className="grid gap-4 lg:grid-cols-4">
+          <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
             {BREAKDOWN_ORDER.map((type) => {
               const item = report.scoreBreakdown?.[type];
               const count = item?.signals ?? 0;
@@ -263,5 +263,7 @@ function signalLabelForReport(type: SignalType) {
   if (type === "regulatory") return "REG";
   if (type === "personnel") return "EXEC";
   if (type === "hiring") return "HIRE";
-  return "NEWS";
+  if (type === "patents") return "PAT";
+  if (type === "news") return "NEWS";
+  return "IR";
 }

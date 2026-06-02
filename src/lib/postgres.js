@@ -73,6 +73,28 @@ export async function ensureDatabaseSchema() {
       )
     `;
 
+    await sql`
+      create table if not exists team_members (
+        id text primary key,
+        email text not null unique,
+        name text not null,
+        role text not null default 'member',
+        status text not null default 'active',
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+      )
+    `;
+
+    await sql`
+      create index if not exists idx_team_members_email
+      on team_members (email)
+    `;
+
+    await sql`
+      create index if not exists idx_team_members_status
+      on team_members (status)
+    `;
+
     return true;
   })();
 

@@ -49,7 +49,15 @@ export function getSignalColor(type: SignalType) {
     return "#c8ff00";
   }
 
-  return "#4488ff";
+  if (type === "patents") {
+    return "#cc33ff";
+  }
+
+  if (type === "news") {
+    return "#4488ff";
+  }
+
+  return "#00ffd5";
 }
 
 export function getAgentColor(agent: AgentCode) {
@@ -173,11 +181,18 @@ function buildSignalFeed(reports: Report[]): SignalFeedItem[] {
 }
 
 function isSignalType(value: unknown): value is SignalType {
-  return value === "regulatory" || value === "personnel" || value === "hiring" || value === "news";
+  return (
+    value === "regulatory" ||
+    value === "personnel" ||
+    value === "hiring" ||
+    value === "patents" ||
+    value === "news" ||
+    value === "ir_traffic"
+  );
 }
 
 function buildSignalSummary(feed: SignalFeedItem[]): DashboardSignalSummary[] {
-  return (["regulatory", "personnel", "hiring", "news"] as SignalType[]).map((type) => {
+  return (["regulatory", "personnel", "hiring", "patents", "news", "ir_traffic"] as SignalType[]).map((type) => {
     const items = feed.filter((signal) => signal.type === type);
     const companies = new Set(items.map((signal) => signal.company.toLowerCase()));
 

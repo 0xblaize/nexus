@@ -1,4 +1,4 @@
-export type SignalType = "regulatory" | "personnel" | "hiring" | "news";
+export type SignalType = "regulatory" | "personnel" | "hiring" | "news" | "patents" | "ir_traffic";
 export type LlmProvider = "gemini";
 export type RecommendationType =
   | "Buy interest"
@@ -36,6 +36,8 @@ export interface ScoreBreakdown {
   personnel: ScoreBreakdownItem;
   hiring: ScoreBreakdownItem;
   news: ScoreBreakdownItem;
+  patents: ScoreBreakdownItem;
+  ir_traffic: ScoreBreakdownItem;
 }
 
 export interface Memo {
@@ -147,6 +149,16 @@ export interface SettingsData {
   usageUsed: number;
   usageTotal: number;
   version: string;
+}
+
+export interface TeamMember {
+  id: string;
+  email: string;
+  name: string;
+  role: "admin" | "member" | "viewer";
+  status: "active" | "inactive";
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface SignalFeedItem {

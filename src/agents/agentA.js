@@ -18,65 +18,57 @@ const FIRECRAWL_SCRAPE_OPTIONS = {
 const SIGNAL_RULES = [
   {
     type: "regulatory",
-    label: "Regulatory pressure",
+    label: "Regulatory Filings",
     pattern:
-      /\b(sec|ftc|doj|regulator|regulatory|antitrust|lawsuit|probe|investigation|approval|permit|license|filing|8-k|13d)\b/i,
+      /\b(sec|edgar|companies house|regulatory portal|filing|8-k|13d|ftc|doj|regulator|regulatory|antitrust|lawsuit|probe|investigation|approval|permit|license)\b/i,
     detail:
-      "Regulatory, legal, or filing activity can alter valuation, deal timing, or strategic optionality.",
+      "SEC EDGAR, Companies House, EU regulatory portals. Unusual 8-K or 13-D filings are often the first public trace of a deal in motion.",
     weight: 1.15,
   },
   {
     type: "personnel",
-    label: "Leadership signal",
+    label: "Executive Movement",
     pattern:
-      /\b(ceo|cfo|chief|executive|board|director|leadership|appoint|appointed|resign|resigned|departure|step down)\b/i,
+      /\b(ceo|cfo|chief|executive|board|director|leadership|appoint|appointed|resign|resigned|departure|step down|c-suite|linkedin|vp|vice president|c-level)\b/i,
     detail:
-      "Leadership and board movement can indicate strategic transition or transaction preparation.",
+      "Sudden C-suite departures, title changes on LinkedIn, or a VP quietly removing their employer - these patterns precede acquisitions by weeks.",
     weight: 0.95,
   },
   {
     type: "hiring",
-    label: "Workforce signal",
+    label: "Hiring Pattern Shifts",
     pattern:
-      /\b(hiring|layoff|job cuts|workforce|recruit|open roles|careers|hiring freeze|headcount)\b/i,
+      /\b(hiring|layoff|job cuts|workforce|recruit|open roles|careers|hiring freeze|headcount|integration engineer|hire|job posting)\b/i,
     detail:
-      "Workforce expansion, contraction, or hiring freezes can expose operational and integration signals.",
+      "A company posting integration engineers overnight signals deal preparation. A sudden hiring freeze signals a deal has already been agreed.",
     weight: 0.9,
   },
   {
-    type: "news",
-    label: "Deal activity",
+    type: "patents",
+    label: "Patent Clusters",
     pattern:
-      /\b(acquisition|acquire|merger|takeover|buyout|stake|strategic investment|investor group|bid|deal)\b/i,
-    detail: "Deal or investment language is a direct strategic signal.",
-    weight: 1.1,
+      /\b(patent|patents|intellectual property|ip filings|patent application|patent filing|patent cluster|ip leverage)\b/i,
+    detail:
+      "Rapid patent filings in a specific domain by an acquiring company often signal they are building IP leverage before making a move.",
+    weight: 1.0,
   },
   {
     type: "news",
-    label: "Risk factor",
+    label: "News Velocity",
     pattern:
-      /\b(risk|delay|shortage|recall|blocked|strike|shutdown|debt|loss|warning|guidance|supply chain|production issue)\b/i,
+      /\b(acquisition|acquire|merger|takeover|buyout|stake|strategic investment|investor group|bid|deal|press coverage|analyst|velocity|financial press|conference|spikes|valuation|funding|partnership|joint venture|risk|delay|shortage|recall|blocked|strike|shutdown|debt|loss|warning|guidance|supply chain|production issue|ipo|public listing|capital raise|secondary sale|share sale|shares|stock|price target|market cap|wall street|volatility|macro|inflation|rates|liquidity)\b/i,
     detail:
-      "Operational, financial, or supply-chain pressure can change market confidence and transaction timing.",
-    weight: 0.95,
-  },
-  {
-    type: "news",
-    label: "Market speculation",
-    pattern:
-      /\b(ipo|public listing|valuation|funding|financing|capital raise|secondary sale|share sale|shares|stock|analyst|price target|market cap|wall street|bitcoin|btc|crypto|cryptocurrency|token|digital asset|volatility|macro|inflation|rates|liquidity)\b/i,
-    detail:
-      "Market speculation, valuation movement, macro volatility, and capital-market activity are valid strategic signals.",
+      "Unusual spikes in financial press coverage, analyst mentions, or conference appearances around a specific company name.",
     weight: 0.85,
   },
   {
-    type: "news",
-    label: "Strategic development",
+    type: "ir_traffic",
+    label: "IR Page Traffic",
     pattern:
-      /\b(partnership|joint venture|contract|launch|expansion|factory|facility|delivery|restructuring|spin-off|spinoff)\b/i,
+      /\b(ir page|investor relations|page visits|page traffic|traffic spike|traffic surge|due diligence|institutional investors)\b/i,
     detail:
-      "Major corporate or operating developments are valid monitoring signals even without an acute threat.",
-    weight: 0.75,
+      "Unusual surges in investor relations page visits often indicate institutional investors quietly doing due diligence.",
+    weight: 1.0,
   },
 ];
 
@@ -167,7 +159,7 @@ function buildSearchQuery(company) {
   return [
     "latest market stability macro developments volatility strategic risk signal news",
     company,
-    "corporate development investment valuation funding crypto policy regulation supply chain leadership hiring operations",
+    "corporate development investment valuation funding crypto policy regulation supply chain leadership hiring operations patents investor relations page traffic",
   ].join(" ");
 }
 

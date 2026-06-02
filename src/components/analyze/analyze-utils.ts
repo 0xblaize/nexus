@@ -1,26 +1,32 @@
 import type { AgentCode, AgentLogTone, ScoreBreakdown, SignalType } from "@/types/nexus";
 
-export const SIGNAL_TYPES: SignalType[] = ["regulatory", "personnel", "hiring", "news"];
+export const SIGNAL_TYPES: SignalType[] = ["regulatory", "personnel", "hiring", "patents", "news", "ir_traffic"];
 
 export const SIGNAL_POINT_CAPS: Record<SignalType, number> = {
-  regulatory: 36,
-  personnel: 23,
-  hiring: 18,
-  news: 23,
+  regulatory: 25,
+  personnel: 15,
+  hiring: 15,
+  patents: 15,
+  news: 15,
+  ir_traffic: 15,
 };
 
 export const SIGNAL_LABELS: Record<SignalType, string> = {
   regulatory: "REGULATORY",
   personnel: "PERSONNEL",
   hiring: "HIRING",
+  patents: "PATENTS",
   news: "NEWS",
+  ir_traffic: "IR_TRAFFIC",
 };
 
 export function getSignalColor(type: SignalType) {
   if (type === "regulatory") return "#ff2d2d";
   if (type === "personnel") return "#ff9900";
   if (type === "hiring") return "#c8ff00";
-  return "#4488ff";
+  if (type === "patents") return "#cc33ff";
+  if (type === "news") return "#4488ff";
+  return "#00ffd5";
 }
 
 export function getAgentColor(agent: AgentCode) {

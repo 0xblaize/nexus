@@ -1,10 +1,12 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
 const TYPE_POINT_CAPS = {
-  regulatory: 36,
-  personnel: 23,
-  hiring: 18,
-  news: 23,
+  regulatory: 25,
+  personnel: 15,
+  hiring: 15,
+  patents: 15,
+  news: 15,
+  ir_traffic: 15,
 };
 
 const RECOMMENDATIONS = ["Buy interest", "Monitor closely", "Insufficient signals"];
@@ -124,7 +126,7 @@ function buildSignalSummary(signals) {
 function buildPrompt(company, signals, baseScore, breakdown) {
   return `You are the NEXUS intelligence validation engine for corporate, market, macro, and operational risk signals.
 
-Do not limit validation to M&A language. BTC/crypto moves, market volatility, funding or valuation shifts, regulatory friction, leadership changes, hiring velocity, scaling milestones, supply-chain pressure, and major operational changes are valid signals when they affect ${company}'s risk or strategic profile.
+Do not limit validation to M&A language. BTC/crypto moves, market volatility, funding or valuation shifts, regulatory friction, leadership changes, hiring velocity, scaling milestones, patent filings, investor relations traffic, and major operational changes are valid signals when they affect ${company}'s risk or strategic profile.
 
 Return only strict JSON with no markdown, commentary, or prose outside the JSON object.
 
@@ -146,8 +148,8 @@ Rules:
 - validated_score must be an integer between 0 and 97.
 - Keep key_insight to one sentence.
 - Keep red_flags concise.
-- Breakdown contribution values are points against fixed category caps: REGULATORY max 36, PERSONNEL max 23, HIRING max 18, NEWS/MACRO max 23.
-- Treat market speculation, IPO or listing chatter, valuation changes, funding, major contracts, regulatory or litigation pressure, leadership shifts, restructuring, production delays, and supply-chain issues as valid monitoring evidence when they appear in the signals.
+- Breakdown contribution values are points against fixed category caps: REGULATORY max 25, PERSONNEL max 15, HIRING max 15, PATENTS max 15, NEWS max 15, IR_TRAFFIC max 15.
+- Treat market speculation, IPO or listing chatter, valuation changes, funding, major contracts, regulatory or litigation pressure, leadership shifts, restructuring, production delays, patent filings, and investor relations page traffic surges as valid monitoring evidence when they appear in the signals.
 - Use "Insufficient signals" only when the supplied signals are trivial, stale, duplicate, or unrelated to ${company}.
 - If the evidence is meaningful but not a definitive acquisition or crisis signal, classify it as "Monitor closely" rather than skipping it.
 - red_flags means risk or monitoring factors. Return 1-4 entries for meaningful developments; if there is no downside risk, label entries as "Strategic Signal" or "Growth Metric" instead of returning an empty array.

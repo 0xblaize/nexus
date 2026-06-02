@@ -27,8 +27,6 @@ function applySessionSettings(settings: SettingsData, session: SettingsSession) 
   const plan = sessionPlan(session, hydrated.planTier);
   return {
     ...settings,
-    displayName: hydrated.displayName || settings.displayName,
-    email: hydrated.emailAddress || settings.email,
     currentPlan: isPaidPlan(plan) ? "Pro analyst" : "Free developer",
     teamsEnabled: isPaidPlan(plan) ? settings.teamsEnabled : false,
     slackAlerts: isPaidPlan(plan) ? settings.slackAlerts : false,
@@ -49,8 +47,6 @@ export async function PATCH(request: Request) {
   const paidPlan = isPaidPlan(plan);
   const sanitizedBody = {
     ...body,
-    displayName: hydrated.displayName || body.displayName,
-    email: hydrated.emailAddress || body.email,
     currentPlan: paidPlan ? "Pro analyst" : "Free developer",
     teamsEnabled: paidPlan ? Boolean(body.teamsEnabled) : false,
     slackAlerts: paidPlan ? Boolean(body.slackAlerts) : false,
