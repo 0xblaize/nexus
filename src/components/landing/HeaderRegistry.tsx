@@ -1,7 +1,9 @@
 export function HeaderRegistry() {
   return (
     <nav>
-      <div className="nav-logo">NEXUS</div>
+      <a aria-label="NEXUS home" className="nav-logo" href="/">
+        <img alt="NEXUS logo" src="/logo-mark.png" />
+      </a>
       <ul className="nav-links">
         <li>
           <a href="#arch">Architecture</a>

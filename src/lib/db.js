@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "fs";
 import { randomUUID } from "crypto";
 import { join } from "path";
 
-import { ensureDatabaseSchema, getSql, hasDatabaseConfig } from "@/lib/postgres";
+import { ensureDatabaseSchema, getSql, hasDatabaseConfig } from "./postgres.js";
 
 const DB_PATH = join(process.cwd(), "nexus-reports.json");
 

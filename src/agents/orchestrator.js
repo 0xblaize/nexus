@@ -17,7 +17,7 @@ function createTimestamp() {
 export async function runNexusPipeline(targetCompany, options = {}) {
   const {
     threshold = 65,
-    provider = "anthropic",
+    provider = "gemini",
     deliverToTeams: shouldDeliver = true,
     logger: externalLogger,
   } = options;

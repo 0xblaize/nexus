@@ -1,5 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 
 const TYPE_WEIGHTS = {
   regulatory: 0.31,
@@ -7,6 +6,46 @@ const TYPE_WEIGHTS = {
   hiring: 0.22,
   news: 0.19,
 };
+
+const RECOMMENDATIONS = ["Buy interest", "Monitor closely", "Insufficient signals"];
+
+const GEMINI_VALIDATION_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    validated_score: {
+      type: Type.INTEGER,
+      description: "Integer score from 0 to 97.",
+    },
+    confidence: {
+      type: Type.STRING,
+      enum: ["low", "medium", "high"],
+    },
+    key_insight: {
+      type: Type.STRING,
+    },
+    red_flags: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+    },
+    recommendation: {
+      type: Type.STRING,
+      enum: RECOMMENDATIONS,
+    },
+  },
+  required: [
+    "validated_score",
+    "confidence",
+    "key_insight",
+    "red_flags",
+    "recommendation",
+  ],
+};
+
+function trimForPrompt(value, maxLength = 1200) {
+  const cleaned = String(value || "").replace(/\s+/g, " ").trim();
+  if (cleaned.length <= maxLength) return cleaned;
+  return `${cleaned.slice(0, maxLength - 3).trim()}...`;
+}
 
 function computeBaseScore(signals) {
   const byType = {};
@@ -57,6 +96,7 @@ function buildSignalSummary(signals) {
       source: signal.source,
       title: signal.title,
       detail: signal.detail,
+      content: trimForPrompt(signal.content),
       weight: signal.weight,
       rawUrl: signal.rawUrl || "",
       scrapedAt: signal.scrapedAt,
@@ -86,19 +126,34 @@ Rules:
 - validated_score must be an integer between 0 and 97.
 - Keep key_insight to one sentence.
 - Keep red_flags concise.
+- Treat market speculation, IPO or listing chatter, valuation changes, funding, major contracts, regulatory or litigation pressure, leadership shifts, restructuring, production delays, and supply-chain issues as valid monitoring evidence when they appear in the signals.
+- Use "Insufficient signals" only when the supplied signals are trivial, stale, duplicate, or unrelated to ${company}.
+- If the evidence is meaningful but not a definitive acquisition or crisis signal, classify it as "Monitor closely" rather than skipping it.
 - Use only evidence present in the signals.`;
 }
 
-function parseStructuredJson(text, baseScore) {
+function parseStructuredJson(text, baseScore, provider = "LLM provider") {
   const cleaned = text.replace(/```json|```/gi, "").trim();
   const start = cleaned.indexOf("{");
   const end = cleaned.lastIndexOf("}");
 
   if (start === -1 || end === -1 || end <= start) {
-    throw new Error("LLM provider did not return a valid JSON object.");
+    const preview = cleaned.slice(0, 240) || "<empty response>";
+    throw new Error(`${provider} did not return a valid JSON object. Preview: ${preview}`);
   }
 
-  const parsed = JSON.parse(cleaned.slice(start, end + 1));
+  let parsed;
+  try {
+    parsed = JSON.parse(cleaned.slice(start, end + 1));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "unknown parse error";
+    const preview = cleaned.slice(start, Math.min(end + 1, start + 240));
+    throw new Error(`${provider} returned malformed JSON: ${message}. Preview: ${preview}`);
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`${provider} returned JSON, but not the expected object shape.`);
+  }
 
   return {
     validated_score: Math.max(0, Math.min(97, Math.round(Number(parsed.validated_score) || baseScore))),
@@ -114,9 +169,7 @@ function parseStructuredJson(text, baseScore) {
       ? parsed.red_flags.filter((flag) => typeof flag === "string" && flag.trim()).map((flag) => flag.trim())
       : [],
     recommendation:
-      parsed.recommendation === "Buy interest" ||
-      parsed.recommendation === "Monitor closely" ||
-      parsed.recommendation === "Insufficient signals"
+      RECOMMENDATIONS.includes(parsed.recommendation)
         ? parsed.recommendation
         : baseScore >= 80
           ? "Buy interest"
@@ -126,25 +179,22 @@ function parseStructuredJson(text, baseScore) {
   };
 }
 
-async function validateWithAnthropic(prompt, baseScore) {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    throw new Error("ANTHROPIC_API_KEY is not configured.");
-  }
+function recommendationFromScore(score) {
+  if (score >= 80) return "Buy interest";
+  if (score >= 45) return "Monitor closely";
+  return "Insufficient signals";
+}
 
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 600,
-    temperature: 0.1,
-    messages: [{ role: "user", content: prompt }],
-  });
-
-  const raw = response.content
-    .filter((block) => block.type === "text")
-    .map((block) => block.text)
-    .join("\n");
-
-  return parseStructuredJson(raw, baseScore);
+function fallbackValidation(baseScore, err) {
+  const message = err instanceof Error ? err.message : "Gemini validation failed.";
+  return {
+    validated_score: baseScore,
+    confidence: "low",
+    key_insight:
+      "Live signals were collected, but Gemini validation was unavailable during this run.",
+    red_flags: [message],
+    recommendation: recommendationFromScore(baseScore),
+  };
 }
 
 async function validateWithGemini(prompt, baseScore) {
@@ -159,27 +209,32 @@ async function validateWithGemini(prompt, baseScore) {
     config: {
       temperature: 0.1,
       topP: 0.1,
-      maxOutputTokens: 600,
+      maxOutputTokens: 800,
+      responseMimeType: "application/json",
+      responseSchema: GEMINI_VALIDATION_SCHEMA,
     },
   });
 
-  return parseStructuredJson(response.text || "", baseScore);
+  return parseStructuredJson(response.text || "", baseScore, "Gemini");
 }
 
 export async function agentB_scoreSignals(company, signals, options = {}) {
-  const provider = options.provider === "gemini" ? "gemini" : "anthropic";
+  const provider = "gemini";
 
   console.log(`  [B1] Running deterministic scoring on ${signals.length} signals...`);
   const { score: baseScore, breakdown } = computeBaseScore(signals);
   console.log(`  [B2] Base score: ${baseScore}/100`);
 
   const prompt = buildPrompt(company, signals, baseScore, breakdown);
-  console.log(`  [B3] Validating with ${provider === "gemini" ? "Google Gemini" : "Anthropic Claude"}...`);
+  console.log("  [B3] Validating with Google Gemini...");
 
-  const llmValidation =
-    provider === "gemini"
-      ? await validateWithGemini(prompt, baseScore)
-      : await validateWithAnthropic(prompt, baseScore);
+  let llmValidation;
+  try {
+    llmValidation = await validateWithGemini(prompt, baseScore);
+  } catch (err) {
+    console.error("Gemini validation failed:", err instanceof Error ? err.message : err);
+    llmValidation = fallbackValidation(baseScore, err);
+  }
 
   const finalScore = Math.round(
     0.6 * baseScore + 0.4 * llmValidation.validated_score,

@@ -8,7 +8,7 @@ function encodeEvent(payload: unknown) {
 }
 
 function normalizeProvider(input: unknown): LlmProvider {
-  return input === "gemini" ? "gemini" : "anthropic";
+  return "gemini";
 }
 
 export async function POST(request: Request) {

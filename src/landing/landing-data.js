@@ -36,7 +36,7 @@ export const architectureItems = [
     number: "01",
     title: "Signal Collector",
     body:
-      "Bright Data's Web Unlocker and SERP API continuously scrape SEC EDGAR filings, corporate careers pages, executive LinkedIn profiles, and patent databases - bypassing every bot-protection layer in real time.",
+      "Firecrawl searches live web and news sources, then returns clean markdown from corporate, financial, regulatory, and market coverage for Gemini-ready analysis.",
   },
   {
     badge: "Agent B",
@@ -50,7 +50,7 @@ export const architectureItems = [
     number: "03",
     title: "Memo Drafter",
     body:
-      "When a company crosses threshold, Claude drafts a one-page investment intelligence memo - overview, signals, probability score, financial implication, and recommended action.",
+      "When a company crosses threshold, the pipeline drafts a one-page investment intelligence memo - overview, signals, probability score, financial implication, and recommended action.",
   },
   {
     badge: "Delivery",
@@ -102,13 +102,13 @@ export const signalItems = [
 
 export const trackItems = [
   {
-    label: "Bright Data x lablab.ai",
+    label: "Firecrawl x Gemini",
     score: "100",
     body:
-      "Web Unlocker + SERP API scraping SEC, LinkedIn, and careers pages across thousands of domains simultaneously.",
+      "Firecrawl search plus markdown extraction gives Gemini clean live context across news, financial analysis, and corporate source pages.",
   },
   {
-    label: "Anthropic Reasoning",
+    label: "Gemini Reasoning",
     score: "100",
     body:
       "Three-agent state machine with deterministic execution, financial scoring math, and structured JSON output at every stage.",
@@ -123,9 +123,9 @@ export const trackItems = [
 
 export const badgeItems = [
   "Node.js",
-  "Bright Data APIs",
+  "Firecrawl",
   "LangChain.js",
-  "Claude API",
+  "Gemini API",
   "Supabase",
   "Microsoft Teams",
   "Copilot Studio",
@@ -136,7 +136,7 @@ export const terminalLines = [
   { prompt: "$", text: 'nexus start --target "DataFlow Systems"', tone: "" },
   {
     prompt: "›",
-    text: "Initializing Bright Data Web Unlocker session...",
+    text: "Initializing Firecrawl search session...",
     tone: "dim",
   },
   { prompt: "›", text: "Scraping SEC EDGAR - searching 13-D filings...", tone: "dim" },

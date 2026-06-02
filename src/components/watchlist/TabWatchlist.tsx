@@ -1,7 +1,7 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
 
 import type { DashboardWatchlistRow } from "@/types/nexus";
 import { formatShortDate, getScoreColor } from "@/lib/dashboard-helpers";
@@ -12,40 +12,18 @@ interface TabWatchlistProps {
 
 export function TabWatchlist({ rows }: TabWatchlistProps) {
   const router = useRouter();
-  const [company, setCompany] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
-  const [localError, setLocalError] = useState("");
-  const alertRows = rows.filter((row) => row.score >= row.alertThreshold);
-  const risingRows = rows.filter((row) => row.score - row.prevScore > 0);
+  const [localRows, setLocalRows] = useState(rows);
+  const alertRows = useMemo(
+    () => localRows.filter((row) => row.score >= row.alertThreshold),
+    [localRows],
+  );
+  const risingRows = useMemo(
+    () => localRows.filter((row) => row.score - row.prevScore > 0),
+    [localRows],
+  );
 
-  async function addCompany() {
-    const trimmed = company.trim();
-    if (!trimmed) {
-      setLocalError("Enter a company name first.");
-      return;
-    }
-
-    setIsSaving(true);
-    setLocalError("");
-
-    try {
-      const response = await fetch("/api/watchlist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ company: trimmed }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Unable to add company.");
-      }
-
-      setCompany("");
-      router.refresh();
-    } catch (error) {
-      setLocalError(error instanceof Error ? error.message : "Unable to add company.");
-    } finally {
-      setIsSaving(false);
-    }
+  function addCompany() {
+    router.push("/analyze");
   }
 
   return (
@@ -69,20 +47,13 @@ export function TabWatchlist({ rows }: TabWatchlistProps) {
             MONITORED TARGETS
           </h1>
           <p className="mt-2 font-mono text-[16px] tracking-[0.01em] text-[#56565d]">
-            {rows.length} active - {alertRows.length} in alert zone
+            {localRows.length} active - {alertRows.length} in alert zone
           </p>
         </header>
 
         <div className="mt-12 flex shrink-0 items-stretch gap-3">
-          <input
-            className="h-[72px] min-w-[260px] border border-[#23232c] bg-[#101015] px-5 font-mono text-[16px] tracking-[0.02em] text-[#b7b7bd] outline-none placeholder:text-[#555]"
-            placeholder="Enter company name"
-            value={company}
-            onChange={(event) => setCompany(event.target.value)}
-          />
           <button
-            className="h-[72px] bg-[#c8ff00] px-8 font-mono text-[16px] font-bold uppercase tracking-[0.14em] text-black disabled:opacity-50"
-            disabled={isSaving}
+            className="h-[72px] bg-[#c8ff00] px-8 font-mono text-[16px] font-bold uppercase tracking-[0.14em] text-black"
             onClick={addCompany}
             type="button"
           >
@@ -91,14 +62,8 @@ export function TabWatchlist({ rows }: TabWatchlistProps) {
         </div>
       </div>
 
-      {localError ? (
-        <div className="mb-6 border border-[#ff2d2d]/40 bg-[#ff2d2d]/5 px-5 py-4 font-mono text-[12px] tracking-[0.04em] text-[#ff9999]">
-          {localError}
-        </div>
-      ) : null}
-
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <MetricCard label="Total Monitored" value={rows.length} tone="#888" />
+        <MetricCard label="Total Monitored" value={localRows.length} tone="#888" />
         <MetricCard label="Alert Zone (70+)" value={alertRows.length} tone="#ff2d2d" />
         <MetricCard label="Score Rising" value={risingRows.length} tone="#ff9900" />
       </section>
@@ -113,8 +78,16 @@ export function TabWatchlist({ rows }: TabWatchlistProps) {
           <span>Actions</span>
         </div>
 
-        {rows.length ? (
-          rows.map((row) => <WatchlistTableRow key={row.id} row={row} />)
+        {localRows.length ? (
+          localRows.map((row) => (
+            <WatchlistTableRow
+              key={row.id}
+              onRemove={(company) =>
+                setLocalRows((current) => current.filter((item) => item.company !== company))
+              }
+              row={row}
+            />
+          ))
         ) : (
           <div className="grid min-h-[220px] place-items-center px-6 py-10 text-center">
             <div>
@@ -143,7 +116,13 @@ function MetricCard({ label, value, tone }: { label: string; value: number; tone
   );
 }
 
-function WatchlistTableRow({ row }: { row: DashboardWatchlistRow }) {
+function WatchlistTableRow({
+  row,
+  onRemove,
+}: {
+  row: DashboardWatchlistRow;
+  onRemove: (company: string) => void;
+}) {
   const router = useRouter();
   const [busyAction, setBusyAction] = useState<"" | "pause" | "delete">("");
   const scoreColor = getScoreColor(row.score);
@@ -168,14 +147,21 @@ function WatchlistTableRow({ row }: { row: DashboardWatchlistRow }) {
 
   async function removeCompany() {
     setBusyAction("delete");
+    onRemove(row.company);
 
     try {
-      await fetch("/api/watchlist", {
+      const response = await fetch("/api/watchlist", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ company: row.company }),
       });
+      if (!response.ok) {
+        throw new Error("Unable to delete watchlist company.");
+      }
       router.refresh();
+    } catch (error) {
+      router.refresh();
+      throw error;
     } finally {
       setBusyAction("");
     }

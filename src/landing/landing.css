@@ -81,10 +81,16 @@ nav {
 }
 
 .nav-logo {
-  font-family: "Bebas Neue", sans-serif;
-  font-size: 1.5rem;
-  letter-spacing: 0.18em;
-  color: #c8ff00;
+  display: inline-flex;
+  align-items: center;
+  width: 42px;
+  height: 42px;
+}
+
+.nav-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .nav-links {
@@ -731,10 +737,16 @@ footer {
 }
 
 footer .flogo {
-  font-family: "Bebas Neue", sans-serif;
-  font-size: 1.3rem;
-  letter-spacing: 0.18em;
-  color: #c8ff00;
+  display: inline-flex;
+  align-items: center;
+  width: 44px;
+  height: 44px;
+}
+
+footer .flogo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 footer p {

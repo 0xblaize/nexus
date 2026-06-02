@@ -2,8 +2,8 @@
 
 NEXUS is a Next.js + Tailwind CSS app that runs a three-agent M&A intelligence workflow:
 
-1. Agent A collects public web signals from SEC filings, news, careers pages, and executive profile traces.
-2. Agent B scores the acquisition probability from 0 to 100 using weighted signal math plus optional LLM validation.
+1. Agent A collects live public web signals through Firecrawl search with clean markdown extraction.
+2. Agent B scores the acquisition probability from 0 to 100 using weighted signal math plus Gemini validation.
 3. Agent C drafts an investment intelligence memo and can deliver it to Microsoft Teams as an adaptive card.
 
 The product idea is simple: acquisition announcements often have visible public signals weeks earlier. NEXUS turns those fragmented signals into a fast analyst workflow.
@@ -17,17 +17,15 @@ npm run dev
 
 Open `http://localhost:3000`.
 
-The app runs in demo mode without API keys. Add real credentials to `.env.local` to enable live Bright Data collection, Claude validation, and Teams delivery.
+The app runs in demo mode without API keys. Add real credentials to `.env.local` to enable live Firecrawl collection, Gemini validation, and Teams delivery.
 
 ## Environment
 
 Copy `.env.example` to `.env.local` and fill in the values you want to use.
 
 ```bash
-ANTHROPIC_API_KEY=
-BRIGHT_DATA_USER=
-BRIGHT_DATA_PASS=
-BRIGHT_DATA_SERP_KEY=
+GEMINI_API_KEY=
+FIRECRAWL_API_KEY=
 TEAMS_WEBHOOK_URL=
 APP_URL=http://localhost:3000
 ```
@@ -71,6 +69,6 @@ curl -X POST http://localhost:3000/analyze \
 
 ## Hackathon Positioning
 
-- Bright Data: live multi-source web intelligence through Web Unlocker and SERP API.
+- Firecrawl: live web/news search with markdown extraction for Gemini-ready context.
 - Gradient: deterministic three-agent workflow with structured scoring outputs.
 - Microsoft: adaptive-card delivery into Teams and an OpenAPI surface for Copilot Studio.

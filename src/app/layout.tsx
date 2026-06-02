@@ -8,6 +8,11 @@ export const metadata = {
   title: "NEXUS - Autonomous M&A Intelligence",
   description:
     "NEXUS monitors public web signals and surfaces M&A intelligence before announcements drop.",
+  icons: {
+    icon: "/favicon.png",
+    shortcut: "/favicon.png",
+    apple: "/logo-mark.png",
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

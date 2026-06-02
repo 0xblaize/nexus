@@ -15,16 +15,12 @@ export async function getDashboardPageData() {
 
   const reports = (await getReports(50)) as Report[];
   const watchlistState = await getWatchlist();
-  const uniqueCompanies = new Set(
-    reports
-      .filter((report) => report?.company)
-      .map((report) => report.company.toLowerCase()),
-  );
+  const dashboardData = buildDashboardData(reports, watchlistState);
 
   return {
-    activeAlerts: reports.filter((report) => report.hasAlert).length,
-    monitoredCompanies: uniqueCompanies.size,
+    activeAlerts: dashboardData.overview.activeAlerts,
+    monitoredCompanies: dashboardData.watchlist.length,
     reportCount: reports.length,
-    dashboardData: buildDashboardData(reports, watchlistState),
+    dashboardData,
   };
 }

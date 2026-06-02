@@ -5,7 +5,7 @@ import type { AnalyzeResponse, LlmProvider, McpArchiveRecord, PipelineResult } f
 export const runtime = "nodejs";
 
 function normalizeProvider(input: unknown): LlmProvider {
-  return input === "gemini" ? "gemini" : "anthropic";
+  return "gemini";
 }
 
 function buildGeminiArchiveRecord(company: string, result: PipelineResult): McpArchiveRecord {

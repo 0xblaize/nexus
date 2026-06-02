@@ -28,11 +28,15 @@ export function AppSidebar({ activeItem = "Analyze", stats, width = 320 }: AppSi
     >
       <div className="border-b border-[#1a1a22] px-6 py-6">
         <div className="flex items-center gap-3">
-          <div className="grid h-[40px] w-[40px] place-items-center bg-[#c8ff00] text-black">
-            <span className="font-mono text-[15px] leading-none">N</span>
+          <div className="grid h-[44px] w-[44px] shrink-0 place-items-center overflow-hidden border border-[#1a1a22] bg-black">
+            <img
+              alt="NEXUS logo"
+              className="h-full w-full object-contain"
+              src="/logo-mark.png"
+            />
           </div>
           <div>
-            <div className="font-hand text-[36px] leading-none tracking-[0.08em] text-white">
+            <div className="font-hand text-[32px] leading-none tracking-[0.08em] text-white">
               NEXUS
             </div>
             <div className="mt-2 font-mono text-[11px] uppercase tracking-[0.38em] text-[#33333a]">

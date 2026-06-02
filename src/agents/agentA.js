@@ -1,190 +1,210 @@
-import axios from "axios";
-import * as cheerio from "cheerio";
+import { randomUUID } from "crypto";
+import { Firecrawl } from "firecrawl";
 
-const BRIGHT_DATA_HOST = "brd.superproxy.io";
-const BRIGHT_DATA_PORT = 22225;
+const SEARCH_LIMIT = 5;
+const MAX_SIGNALS = 8;
+const DETAIL_LIMIT = 320;
+const CONTENT_LIMIT = 1800;
 
-const fetcher = axios.create({
-  timeout: 30000,
-  headers: {
-    "User-Agent": "Mozilla/5.0 (compatible; NexusAgent/1.0)",
-    Accept: "text/html,application/xhtml+xml,application/json",
+const SIGNAL_RULES = [
+  {
+    type: "regulatory",
+    label: "Regulatory pressure",
+    pattern:
+      /\b(sec|ftc|doj|regulator|regulatory|antitrust|lawsuit|probe|investigation|approval|permit|license|filing|8-k|13d)\b/i,
+    detail:
+      "Regulatory, legal, or filing activity can alter valuation, deal timing, or strategic optionality.",
+    weight: 1.15,
   },
-});
+  {
+    type: "personnel",
+    label: "Leadership signal",
+    pattern:
+      /\b(ceo|cfo|chief|executive|board|director|leadership|appoint|appointed|resign|resigned|departure|step down)\b/i,
+    detail:
+      "Leadership and board movement can indicate strategic transition or transaction preparation.",
+    weight: 0.95,
+  },
+  {
+    type: "hiring",
+    label: "Workforce signal",
+    pattern:
+      /\b(hiring|layoff|job cuts|workforce|recruit|open roles|careers|hiring freeze|headcount)\b/i,
+    detail:
+      "Workforce expansion, contraction, or hiring freezes can expose operational and integration signals.",
+    weight: 0.9,
+  },
+  {
+    type: "news",
+    label: "Deal activity",
+    pattern:
+      /\b(acquisition|acquire|merger|takeover|buyout|stake|strategic investment|investor group|bid|deal)\b/i,
+    detail: "Deal or investment language is a direct strategic signal.",
+    weight: 1.1,
+  },
+  {
+    type: "news",
+    label: "Risk factor",
+    pattern:
+      /\b(risk|delay|shortage|recall|blocked|strike|shutdown|debt|loss|warning|guidance|supply chain|production issue)\b/i,
+    detail:
+      "Operational, financial, or supply-chain pressure can change market confidence and transaction timing.",
+    weight: 0.95,
+  },
+  {
+    type: "news",
+    label: "Market speculation",
+    pattern:
+      /\b(ipo|public listing|valuation|funding|financing|capital raise|secondary sale|share sale|shares|stock|analyst|price target|market cap|wall street)\b/i,
+    detail:
+      "Market speculation, valuation movement, and capital-market activity are valid strategic signals.",
+    weight: 0.85,
+  },
+  {
+    type: "news",
+    label: "Strategic development",
+    pattern:
+      /\b(partnership|joint venture|contract|launch|expansion|factory|facility|delivery|restructuring|spin-off|spinoff)\b/i,
+    detail:
+      "Major corporate or operating developments are valid monitoring signals even without an acute threat.",
+    weight: 0.75,
+  },
+];
 
-function hasBrightDataConfig() {
-  return Boolean(
-    process.env.BRIGHT_DATA_USER &&
-      process.env.BRIGHT_DATA_PASS &&
-      process.env.BRIGHT_DATA_SERP_KEY,
+let firecrawlClient = null;
+
+function getFirecrawlClient() {
+  if (!process.env.FIRECRAWL_API_KEY) return null;
+  if (!firecrawlClient) {
+    firecrawlClient = new Firecrawl({ apiKey: process.env.FIRECRAWL_API_KEY });
+  }
+  return firecrawlClient;
+}
+
+function cleanText(value, maxLength = DETAIL_LIMIT) {
+  const cleaned = String(value || "").replace(/\s+/g, " ").trim();
+  if (cleaned.length <= maxLength) return cleaned;
+  return `${cleaned.slice(0, maxLength - 3).trim()}...`;
+}
+
+function sourceFromUrl(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "Firecrawl Search";
+  }
+}
+
+function buildSearchQuery(company) {
+  return [
+    "latest news market reaction financial analysis risk signal",
+    company,
+    "corporate development investment valuation funding policy regulation supply chain leadership",
+  ].join(" ");
+}
+
+function getSearchItems(searchResult) {
+  const legacyData = Object.getOwnPropertyDescriptor(searchResult ?? {}, "data");
+  const buckets = [
+    Array.isArray(searchResult) ? searchResult : null,
+    searchResult?.news,
+    searchResult?.web,
+    legacyData && "value" in legacyData ? legacyData.value : null,
+    legacyData && "value" in legacyData ? legacyData.value?.news : null,
+    legacyData && "value" in legacyData ? legacyData.value?.web : null,
+  ];
+  const seen = new Set();
+
+  return buckets
+    .flatMap((bucket) => (Array.isArray(bucket) ? bucket : []))
+    .filter((item) => {
+      const key = cleanText(item?.url || item?.title || item?.description || item?.markdown).toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function classifySignal(item) {
+  const corpus = [
+    item?.title,
+    item?.description,
+    item?.snippet,
+    item?.markdown,
+    item?.content,
+    item?.metadata?.title,
+    item?.metadata?.description,
+  ].join(" ");
+
+  return (
+    SIGNAL_RULES.find((rule) => rule.pattern.test(corpus)) || {
+      type: "news",
+      label: "Market coverage",
+      detail:
+        "Recent company coverage is a low-weight monitoring signal when no acute risk or deal term is present.",
+      weight: 0.45,
+    }
   );
 }
 
-function proxyConfig() {
+function createSignal(company, item) {
+  const rule = classifySignal(item);
+  const url = item?.url || item?.metadata?.sourceURL || "";
+  const title = cleanText(item?.title || item?.metadata?.title || url || "Firecrawl result", 180);
+  const content = cleanText(
+    item?.markdown || item?.content || item?.description || item?.snippet || item?.metadata?.description,
+    CONTENT_LIMIT,
+  );
+  const summary = cleanText(item?.description || item?.snippet || content, 220);
+  const detail = summary ? `${rule.label}: ${rule.detail} ${summary}` : `${rule.label}: ${rule.detail}`;
+
   return {
-    host: BRIGHT_DATA_HOST,
-    port: BRIGHT_DATA_PORT,
-    auth: {
-      username: process.env.BRIGHT_DATA_USER,
-      password: process.env.BRIGHT_DATA_PASS,
-    },
-    protocol: "http",
+    id: randomUUID(),
+    company,
+    type: rule.type,
+    source: item?.source || item?.siteName || sourceFromUrl(url),
+    title,
+    detail: cleanText(detail),
+    content,
+    weight: rule.weight,
+    rawUrl: url,
+    scrapedAt: new Date().toISOString(),
   };
 }
 
-async function scrapeSecFilings(company) {
-  try {
-    const query = encodeURIComponent(company);
-    const url = `https://efts.sec.gov/LATEST/search-index?q=${query}&dateRange=custom&startdt=${getPastDate(30)}&forms=8-K,13-D,SC%2013G`;
-    const res = await fetcher.get(url, { proxy: proxyConfig() });
-    const filings = res.data?.hits?.hits || [];
+export async function agentA_collectSignals(company) {
+  const firecrawl = getFirecrawlClient();
 
-    return filings.slice(0, 5).map((filing) => ({
-      type: "regulatory",
-      source: "SEC EDGAR",
-      title: `${filing._source?.file_date || "Recent"} - ${filing._source?.form_type || "Filing"}`,
-      detail: filing._source?.period_of_report || "Recent regulatory activity detected.",
-      weight: filing._source?.form_type === "13-D" ? 1.4 : 1.0,
-      rawUrl: `https://www.sec.gov/Archives/edgar/data/${filing._source?.entity_id || ""}`,
-      scrapedAt: new Date().toISOString(),
-    }));
-  } catch (err) {
-    console.error("SEC scrape failed:", err.message);
+  if (!firecrawl) {
+    console.log("  [A0] FIRECRAWL_API_KEY is missing. Live ingestion unavailable.");
     return [];
   }
-}
 
-async function scrapeNewsSignals(company) {
   try {
-    const url = `https://api.brightdata.com/serp/google/search?q=${encodeURIComponent(
-      `${company} merger acquisition investment stake`,
-    )}&num=10&tbm=nws&key=${process.env.BRIGHT_DATA_SERP_KEY}`;
-    const res = await fetcher.get(url);
-    const articles = res.data?.organic_results || [];
+    console.log(`  [A1] Executing Firecrawl search for ${company}...`);
+    const searchResult = await firecrawl.search(buildSearchQuery(company), {
+      limit: SEARCH_LIMIT,
+      sources: ["news", "web"],
+      scrapeOptions: {
+        formats: ["markdown"],
+      },
+    });
 
-    return articles
-      .slice(0, 8)
-      .filter((article) =>
-        /acqui|merger|stake|bid|deal|buyout/i.test(
-          `${article.title || ""} ${article.snippet || ""}`,
-        ),
-      )
-      .map((article) => ({
-        type: "news",
-        source: article.source || "Google News",
-        title: article.title,
-        detail: article.snippet?.slice(0, 200) || "",
-        weight: 0.8,
-        rawUrl: article.link,
-        scrapedAt: new Date().toISOString(),
-      }));
-  } catch (err) {
-    console.error("SERP news scrape failed:", err.message);
-    return [];
-  }
-}
-
-async function scrapeCareersPage(company) {
-  try {
-    const searchUrl = `https://api.brightdata.com/serp/google/search?q=${encodeURIComponent(
-      `${company} careers jobs site`,
-    )}&num=3&key=${process.env.BRIGHT_DATA_SERP_KEY}`;
-    const searchRes = await fetcher.get(searchUrl);
-    const results = searchRes.data?.organic_results || [];
-    const careersUrl = results.find((result) =>
-      /career|job|work/i.test(result.link || ""),
-    )?.link;
-
-    if (!careersUrl) return [];
-
-    const pageRes = await fetcher.get(careersUrl, { proxy: proxyConfig() });
-    const $ = cheerio.load(pageRes.data);
-    const jobCount = $('[class*="job"],[class*="role"],[class*="position"]').length;
-    const integrationJobs = $('*:contains("integration"),*:contains("M&A"),*:contains("acquisition")')
-      .filter((_, el) => $(el).children().length === 0).length;
-
-    const signals = [];
-    if (jobCount > 50) {
-      signals.push({
-        type: "hiring",
-        source: "Careers Page",
-        title: `High job posting volume detected (${jobCount} open roles)`,
-        detail: "Unusual volume may indicate expansion or integration preparation.",
-        weight: jobCount > 100 ? 1.3 : 0.9,
-        rawUrl: careersUrl,
-        scrapedAt: new Date().toISOString(),
-      });
+    if (searchResult?.success === false) {
+      console.log("  [A1] Firecrawl search returned an unsuccessful response.");
+      return [];
     }
 
-    if (integrationJobs > 0) {
-      signals.push({
-        type: "hiring",
-        source: "Careers Page",
-        title: `Integration or M&A-related roles detected (${integrationJobs} found)`,
-        detail: "Roles referencing integration or M&A are a strong pre-deal signal.",
-        weight: 1.5,
-        rawUrl: careersUrl,
-        scrapedAt: new Date().toISOString(),
-      });
-    }
+    const items = getSearchItems(searchResult);
+    const signals = items
+      .filter((item) => item?.title || item?.description || item?.snippet || item?.markdown)
+      .slice(0, MAX_SIGNALS)
+      .map((item) => createSignal(company, item));
 
+    console.log(`  [A1] Collected ${signals.length} live signals from Firecrawl.`);
     return signals;
   } catch (err) {
-    console.error("Careers scrape failed:", err.message);
+    console.error("Firecrawl collection failed:", err.message);
     return [];
   }
-}
-
-async function scrapeExecutiveSignals(company) {
-  try {
-    const url = `https://api.brightdata.com/serp/google/search?q=${encodeURIComponent(
-      `site:linkedin.com/in "${company}" CEO OR CFO OR "Chief"`,
-    )}&num=5&key=${process.env.BRIGHT_DATA_SERP_KEY}`;
-    const res = await fetcher.get(url);
-    const results = res.data?.organic_results || [];
-
-    return results
-      .filter((result) => /former|previously|ex-|left/i.test(result.snippet || ""))
-      .map((result) => ({
-        type: "personnel",
-        source: "LinkedIn",
-        title: `Possible executive departure: ${result.title}`,
-        detail: result.snippet?.slice(0, 200) || "",
-        weight: 1.2,
-        rawUrl: result.link,
-        scrapedAt: new Date().toISOString(),
-      }));
-  } catch (err) {
-    console.error("LinkedIn scrape failed:", err.message);
-    return [];
-  }
-}
-
-export async function agentA_collectSignals(company) {
-  if (!hasBrightDataConfig()) {
-    console.log("  [A0] Bright Data credentials missing. Live ingestion unavailable.");
-    return [];
-  }
-
-  console.log("  [A1] Scraping SEC EDGAR...");
-  const secSignals = await scrapeSecFilings(company);
-
-  console.log("  [A2] Scraping Google News via SERP API...");
-  const newsSignals = await scrapeNewsSignals(company);
-
-  console.log("  [A3] Scraping careers page...");
-  const careersSignals = await scrapeCareersPage(company);
-
-  console.log("  [A4] Checking executive LinkedIn signals...");
-  const executiveSignals = await scrapeExecutiveSignals(company);
-
-  const all = [...secSignals, ...newsSignals, ...careersSignals, ...executiveSignals];
-  console.log(`  Collected ${all.length} raw signals across 4 sources`);
-  return all;
-}
-
-function getPastDate(days) {
-  const date = new Date();
-  date.setDate(date.getDate() - days);
-  return date.toISOString().split("T")[0];
 }

@@ -1,5 +1,5 @@
 export type SignalType = "regulatory" | "personnel" | "hiring" | "news";
-export type LlmProvider = "anthropic" | "gemini";
+export type LlmProvider = "gemini";
 export type RecommendationType =
   | "Buy interest"
   | "Monitor closely"
@@ -14,6 +14,7 @@ export interface Signal {
   source: string;
   title: string;
   detail: string;
+  content?: string;
   weight: number;
   company: string;
   rawUrl?: string;

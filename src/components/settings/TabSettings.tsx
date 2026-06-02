@@ -16,6 +16,7 @@ const LANGUAGES = ["English", "French", "German", "Spanish"] as const;
 export function TabSettings({ initialSettings }: { initialSettings: SettingsData }) {
   const [settings, setSettings] = useState<SettingsData>(initialSettings);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const [utilityBusy, setUtilityBusy] = useState<"" | "password" | "billing">("");
   const [error, setError] = useState("");
 
   function update<K extends keyof SettingsData>(key: K, value: SettingsData[K]) {
@@ -44,6 +45,38 @@ export function TabSettings({ initialSettings }: { initialSettings: SettingsData
     } catch (saveError) {
       setSaveState("idle");
       setError(saveError instanceof Error ? saveError.message : "Unable to save settings.");
+    }
+  }
+
+  async function runUtilityAction(action: "change-password" | "billing-portal") {
+    setError("");
+    setUtilityBusy(action === "change-password" ? "password" : "billing");
+
+    try {
+      const response = await fetch("/api/settings/utilities", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        url?: string;
+      };
+
+      if (!response.ok || !payload.url) {
+        throw new Error(payload.error || "Unable to complete settings action.");
+      }
+
+      window.open(payload.url, "_blank", "noopener,noreferrer");
+    } catch (utilityError) {
+      setError(
+        utilityError instanceof Error
+          ? utilityError.message
+          : "Unable to complete settings action.",
+      );
+    } finally {
+      setUtilityBusy("");
     }
   }
 
@@ -88,8 +121,13 @@ export function TabSettings({ initialSettings }: { initialSettings: SettingsData
             <Input value={settings.email} onChange={(value) => update("email", value)} />
           </Row>
           <Row description="Update your login password and security settings." label="Password">
-            <button className="border border-[#23283f] px-5 py-3 font-mono text-[13px] uppercase tracking-[0.1em] text-[#c8d2ff]" type="button">
-              [!] Change Password
+            <button
+              className="border border-[#23283f] px-5 py-3 font-mono text-[13px] uppercase tracking-[0.1em] text-[#c8d2ff] disabled:opacity-50"
+              disabled={utilityBusy === "password"}
+              onClick={() => runUtilityAction("change-password")}
+              type="button"
+            >
+              {utilityBusy === "password" ? "[...] Opening" : "[!] Change Password"}
             </button>
           </Row>
         </Section>
@@ -211,8 +249,13 @@ export function TabSettings({ initialSettings }: { initialSettings: SettingsData
             </div>
           </div>
           <Row label="Billing">
-            <button className="border border-[#23283f] px-5 py-3 font-mono text-[13px] uppercase tracking-[0.1em] text-[#c8d2ff]" type="button">
-              [#] Billing Portal
+            <button
+              className="border border-[#23283f] px-5 py-3 font-mono text-[13px] uppercase tracking-[0.1em] text-[#c8d2ff] disabled:opacity-50"
+              disabled={utilityBusy === "billing"}
+              onClick={() => runUtilityAction("billing-portal")}
+              type="button"
+            >
+              {utilityBusy === "billing" ? "[...] Opening" : "[#] Billing Portal"}
             </button>
           </Row>
           <div className="border-t border-[#15151c] px-6 py-5 font-mono text-[12px] uppercase tracking-[0.12em] text-[#4d4d54]">

@@ -123,31 +123,30 @@ function buildWatchlistFromReports(
   reports: Report[],
   storedWatchlist: StoredWatchlistEntry[] = [],
 ): DashboardWatchlistRow[] {
-  return uniqueByCompany(reports).map((report) => {
-    const storedEntry = storedWatchlist.find(
-      (item) => item.company.toLowerCase() === report.company.toLowerCase(),
-    );
+  const latestReportsByCompany = new Map(
+    uniqueByCompany(reports).map((report) => [report.company.toLowerCase(), report]),
+  );
+
+  return storedWatchlist.map((storedEntry) => {
+    const report = latestReportsByCompany.get(storedEntry.company.toLowerCase());
+    const signals = Array.isArray(report?.signals) ? report.signals : [];
 
     return {
-    id: `watch-${report.company.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
-    company: report.company,
-    score: report.score,
-    prevScore: report.prevScore ?? report.score,
-    lastChecked: report.createdAt,
-    status: storedEntry?.status ?? "active",
-    alertThreshold: storedEntry?.alertThreshold ?? 70,
-    recommendation: report.recommendation,
-    confidence: report.confidence,
-    latestReportId: report.id,
-    latestMemo: report.memo,
-    latestSignals: Array.isArray(report.signals) ? report.signals : [],
-    signalCount:
-      typeof report.signalCount === "number"
-        ? report.signalCount
-        : Array.isArray(report.signals)
-          ? report.signals.length
-          : 0,
-    scoreBreakdown: report.scoreBreakdown,
+      id: `watch-${storedEntry.company.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+      company: report?.company ?? storedEntry.company,
+      score: report?.score ?? 0,
+      prevScore: report?.prevScore ?? report?.score ?? 0,
+      lastChecked: report?.createdAt ?? storedEntry.createdAt,
+      status: storedEntry.status,
+      alertThreshold: storedEntry.alertThreshold,
+      recommendation: report?.recommendation ?? "Insufficient signals",
+      confidence: report?.confidence ?? "low",
+      latestReportId: report?.id ?? null,
+      latestMemo: report?.memo ?? null,
+      latestSignals: signals,
+      signalCount:
+        typeof report?.signalCount === "number" ? report.signalCount : signals.length,
+      scoreBreakdown: report?.scoreBreakdown ?? null,
     };
   });
 }

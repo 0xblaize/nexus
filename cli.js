@@ -1,11 +1,16 @@
 #!/usr/bin/env node
 
-import "dotenv/config";
 import chalk from "chalk";
+import { config } from "dotenv";
 import { runNexusPipeline } from "./src/agents/orchestrator.js";
 
+config({ path: ".env.local" });
+config();
+
 const company = process.argv[2];
-const threshold = Number.parseInt(process.argv[3], 10) || 65;
+const rawThreshold = Number.parseInt(process.argv[3], 10);
+const threshold = Number.isFinite(rawThreshold) ? rawThreshold : 65;
+const provider = "gemini";
 
 if (!company) {
   console.log(chalk.red('\nUsage: node cli.js "Company Name" [threshold]\n'));
@@ -21,10 +26,11 @@ Autonomous Signal Detection v1.0
 );
 
 try {
-  const result = await runNexusPipeline(company, { threshold });
+  const result = await runNexusPipeline(company, { threshold, provider });
 
   console.log(chalk.cyan("\n========================================\n"));
   console.log(chalk.white.bold(`COMPANY:        ${company}`));
+  console.log(chalk.white(`PROVIDER:       ${provider}`));
   console.log(chalk.white(`SCORE:          ${chalk.bold(result.score)}/100`));
   console.log(chalk.white(`SIGNALS:        ${result.signals?.length || 0}`));
 
