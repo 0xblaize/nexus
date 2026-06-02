@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import type { TransactionSql } from "postgres";
 
 import { authOptions } from "@/lib/auth";
 import { getSql, hasDatabaseConfig } from "@/lib/postgres";
@@ -64,7 +65,7 @@ export async function POST() {
   if (hasDatabaseConfig()) {
     const sql = getSql();
 
-    await sql.begin(async (tx) => {
+    await sql.begin(async (tx: TransactionSql) => {
       if ((await tableExists(tx, "app_settings")) && (await columnExists(tx, "app_settings", "user_id"))) {
         await tx`delete from app_settings where user_id = ${userId}`;
         deleted.push("app_settings");
