@@ -1,10 +1,19 @@
 import { randomUUID } from "crypto";
 import { Firecrawl } from "firecrawl";
 
-const SEARCH_LIMIT = 5;
-const MAX_SIGNALS = 8;
+const SEARCH_LIMIT = 6;
+const MAX_SIGNALS = 10;
 const DETAIL_LIMIT = 320;
-const CONTENT_LIMIT = 1800;
+const CONTENT_LIMIT = 1400;
+
+const FIRECRAWL_SCRAPE_OPTIONS = {
+  formats: ["markdown"],
+  onlyMainContent: true,
+  excludeTags: ["nav", "footer", "header", "aside", "script", "style", "noscript", "svg", "form"],
+  removeBase64Images: true,
+  blockAds: true,
+  timeout: 30000,
+};
 
 const SIGNAL_RULES = [
   {
@@ -106,6 +115,46 @@ function cleanText(value, maxLength = DETAIL_LIMIT) {
   return `${cleaned.slice(0, maxLength - 3).trim()}...`;
 }
 
+function toReadableText(value) {
+  if (typeof value === "string" || typeof value === "number") {
+    return cleanText(value, Number.MAX_SAFE_INTEGER);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(toReadableText).filter(Boolean).join(" ");
+  }
+
+  return "";
+}
+
+function extractJsonText(value) {
+  if (!value || typeof value !== "object") return toReadableText(value);
+
+  const fields = [
+    value.title,
+    value.headline,
+    value.summary,
+    value.description,
+    value.keyInsight,
+    value.development,
+    value.riskFactor,
+    value.riskFactors,
+    value.signals,
+    value.keyFacts,
+  ];
+
+  return fields.map(toReadableText).filter(Boolean).join(" ");
+}
+
+function firstText(...values) {
+  for (const value of values) {
+    const text = toReadableText(value) || extractJsonText(value);
+    if (text) return text;
+  }
+
+  return "";
+}
+
 function sourceFromUrl(url) {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
@@ -124,20 +173,29 @@ function buildSearchQuery(company) {
 
 function getSearchItems(searchResult) {
   const legacyData = Object.getOwnPropertyDescriptor(searchResult ?? {}, "data");
+  const legacyValue = legacyData && "value" in legacyData ? legacyData.value : null;
   const buckets = [
     Array.isArray(searchResult) ? searchResult : null,
     searchResult?.news,
     searchResult?.web,
-    legacyData && "value" in legacyData ? legacyData.value : null,
-    legacyData && "value" in legacyData ? legacyData.value?.news : null,
-    legacyData && "value" in legacyData ? legacyData.value?.web : null,
+    legacyValue,
+    legacyValue?.news,
+    legacyValue?.web,
   ];
   const seen = new Set();
 
   return buckets
     .flatMap((bucket) => (Array.isArray(bucket) ? bucket : []))
     .filter((item) => {
-      const key = cleanText(item?.url || item?.title || item?.description || item?.markdown).toLowerCase();
+      const key = firstText(
+        item?.url,
+        item?.metadata?.sourceURL,
+        item?.title,
+        item?.metadata?.title,
+        item?.description,
+        item?.snippet,
+        item?.markdown,
+      ).toLowerCase();
       if (!key || seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -151,8 +209,11 @@ function classifySignal(item) {
     item?.snippet,
     item?.markdown,
     item?.content,
+    item?.summary,
+    extractJsonText(item?.json),
     item?.metadata?.title,
     item?.metadata?.description,
+    item?.metadata?.sourceURL,
   ].join(" ");
 
   return (
@@ -168,20 +229,29 @@ function classifySignal(item) {
 
 function createSignal(company, item) {
   const rule = classifySignal(item);
-  const url = item?.url || item?.metadata?.sourceURL || "";
-  const title = cleanText(item?.title || item?.metadata?.title || url || "Firecrawl result", 180);
+  const url = firstText(item?.url, item?.metadata?.sourceURL);
+  const title = cleanText(firstText(item?.title, item?.metadata?.title, url, "Firecrawl result"), 180);
   const content = cleanText(
-    item?.markdown || item?.content || item?.description || item?.snippet || item?.metadata?.description,
+    firstText(
+      item?.markdown,
+      item?.content,
+      item?.summary,
+      item?.description,
+      item?.snippet,
+      item?.metadata?.description,
+      item?.json,
+    ),
     CONTENT_LIMIT,
   );
-  const summary = cleanText(item?.description || item?.snippet || content, 220);
+  const summary = cleanText(firstText(item?.description, item?.snippet, item?.metadata?.description, content), 220);
   const detail = summary ? `${rule.label}: ${rule.detail} ${summary}` : `${rule.label}: ${rule.detail}`;
 
   return {
     id: randomUUID(),
     company,
     type: rule.type,
-    source: item?.source || item?.siteName || sourceFromUrl(url),
+    label: rule.label,
+    source: firstText(item?.source, item?.siteName, item?.metadata?.siteName) || sourceFromUrl(url),
     title,
     detail: cleanText(detail),
     content,
@@ -204,9 +274,9 @@ export async function agentA_collectSignals(company) {
     const searchResult = await firecrawl.search(buildSearchQuery(company), {
       limit: SEARCH_LIMIT,
       sources: ["news", "web"],
-      scrapeOptions: {
-        formats: ["markdown"],
-      },
+      tbs: "qdr:m",
+      timeout: 60000,
+      scrapeOptions: FIRECRAWL_SCRAPE_OPTIONS,
     });
 
     if (searchResult?.success === false) {
@@ -216,7 +286,18 @@ export async function agentA_collectSignals(company) {
 
     const items = getSearchItems(searchResult);
     const signals = items
-      .filter((item) => item?.title || item?.description || item?.snippet || item?.markdown)
+      .filter((item) =>
+        firstText(
+          item?.title,
+          item?.metadata?.title,
+          item?.description,
+          item?.snippet,
+          item?.markdown,
+          item?.content,
+          item?.summary,
+          item?.json,
+        ),
+      )
       .slice(0, MAX_SIGNALS)
       .map((item) => createSignal(company, item));
 

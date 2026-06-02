@@ -25,6 +25,7 @@ const GEMINI_VALIDATION_SCHEMA = {
     },
     red_flags: {
       type: Type.ARRAY,
+      description: "One to four concise risk or monitoring factors. Use Strategic Signal or Growth Metric when there is no downside risk.",
       items: { type: Type.STRING },
     },
     recommendation: {
@@ -84,7 +85,18 @@ function computeBaseScore(signals) {
     totalScore += contribution;
   }
 
-  const score = Math.min(Math.round((totalScore * 100) / 0.8), 97);
+  const laneScore = Math.min(Math.round((totalScore * 100) / 0.8), 97);
+  const weightedSignalTotal = signals.reduce((sum, signal) => {
+    const weight = Number.isFinite(Number(signal.weight)) ? Number(signal.weight) : 0.45;
+    return sum + Math.max(0, Math.min(weight, 1.3));
+  }, 0);
+  const significantSignals = signals.filter((signal) => Number(signal.weight) >= 0.7).length;
+  const activeTypes = Object.values(byType).filter((items) => items.length > 0).length;
+  const volumeScore = Math.min(74, Math.round(weightedSignalTotal * 8.5));
+  const diversityBonus = Math.min(12, Math.max(0, activeTypes - 1) * 4);
+  const signalClusterBonus = significantSignals >= 3 ? Math.min(10, significantSignals + 2) : 0;
+  const score = Math.min(97, Math.max(laneScore, volumeScore + diversityBonus + signalClusterBonus));
+
   return { score, breakdown };
 }
 
@@ -93,6 +105,7 @@ function buildSignalSummary(signals) {
     .slice(0, 20)
     .map((signal) => ({
       type: signal.type,
+      label: signal.label,
       source: signal.source,
       title: signal.title,
       detail: signal.detail,
@@ -129,6 +142,7 @@ Rules:
 - Treat market speculation, IPO or listing chatter, valuation changes, funding, major contracts, regulatory or litigation pressure, leadership shifts, restructuring, production delays, and supply-chain issues as valid monitoring evidence when they appear in the signals.
 - Use "Insufficient signals" only when the supplied signals are trivial, stale, duplicate, or unrelated to ${company}.
 - If the evidence is meaningful but not a definitive acquisition or crisis signal, classify it as "Monitor closely" rather than skipping it.
+- red_flags means risk or monitoring factors. Return 1-4 entries for meaningful developments; if there is no downside risk, label entries as "Strategic Signal" or "Growth Metric" instead of returning an empty array.
 - Use only evidence present in the signals.`;
 }
 
@@ -181,18 +195,36 @@ function parseStructuredJson(text, baseScore, provider = "LLM provider") {
 
 function recommendationFromScore(score) {
   if (score >= 80) return "Buy interest";
-  if (score >= 45) return "Monitor closely";
+  if (score >= 40) return "Monitor closely";
   return "Insufficient signals";
 }
 
+function deriveMonitoringFactors(signals) {
+  const seen = new Set();
+  return signals
+    .filter((signal) => Number(signal.weight) >= 0.7)
+    .map((signal) => {
+      const label = signal.label || signal.detail?.split(":")[0] || "Strategic Signal";
+      const title = trimForPrompt(signal.title, 140);
+      const source = signal.source ? ` (${signal.source})` : "";
+      return `${label}: ${title}${source}`;
+    })
+    .filter((flag) => {
+      const key = flag.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 4);
+}
+
 function fallbackValidation(baseScore, err) {
-  const message = err instanceof Error ? err.message : "Gemini validation failed.";
   return {
     validated_score: baseScore,
     confidence: "low",
     key_insight:
       "Live signals were collected, but Gemini validation was unavailable during this run.",
-    red_flags: [message],
+    red_flags: [],
     recommendation: recommendationFromScore(baseScore),
   };
 }
@@ -209,7 +241,7 @@ async function validateWithGemini(prompt, baseScore) {
     config: {
       temperature: 0.1,
       topP: 0.1,
-      maxOutputTokens: 800,
+      maxOutputTokens: 1600,
       responseMimeType: "application/json",
       responseSchema: GEMINI_VALIDATION_SCHEMA,
     },
@@ -236,9 +268,20 @@ export async function agentB_scoreSignals(company, signals, options = {}) {
     llmValidation = fallbackValidation(baseScore, err);
   }
 
-  const finalScore = Math.round(
+  const monitoringFactors = deriveMonitoringFactors(signals);
+  if (!llmValidation.red_flags.length && monitoringFactors.length) {
+    llmValidation.red_flags = monitoringFactors;
+  }
+  if (llmValidation.recommendation === "Insufficient signals" && baseScore >= 40 && monitoringFactors.length) {
+    llmValidation.recommendation = "Monitor closely";
+  }
+
+  const blendedScore = Math.round(
     0.6 * baseScore + 0.4 * llmValidation.validated_score,
   );
+  const finalScore = llmValidation.recommendation === "Insufficient signals"
+    ? blendedScore
+    : Math.max(baseScore, blendedScore);
 
   return {
     provider,

@@ -78,6 +78,7 @@ export async function runNexusPipeline(targetCompany, options = {}) {
       keyInsight: scoreResult.keyInsight,
       confidence: scoreResult.confidence,
       recommendation: scoreResult.recommendation,
+      redFlags: scoreResult.redFlags,
       memo: null,
     });
 
@@ -89,6 +90,7 @@ export async function runNexusPipeline(targetCompany, options = {}) {
       confidence: scoreResult.confidence,
       keyInsight: scoreResult.keyInsight,
       recommendation: scoreResult.recommendation,
+      redFlags: scoreResult.redFlags,
       signals: rawSignals,
       memo: null,
       logs,
@@ -116,6 +118,7 @@ export async function runNexusPipeline(targetCompany, options = {}) {
     keyInsight: scoreResult.keyInsight,
     confidence: scoreResult.confidence,
     recommendation: scoreResult.recommendation,
+    redFlags: scoreResult.redFlags,
     memo,
   });
 
@@ -130,6 +133,7 @@ export async function runNexusPipeline(targetCompany, options = {}) {
     confidence: scoreResult.confidence,
     keyInsight: scoreResult.keyInsight,
     recommendation: scoreResult.recommendation,
+    redFlags: scoreResult.redFlags,
     signals: rawSignals,
     memo,
     reportId: report.id,

@@ -190,7 +190,7 @@ function WatchlistTableRow({
         {change >= 0 ? "^" : "v"} {changeLabel}
       </div>
 
-      <div className="text-[#4d4d54]">{formatShortDate(row.lastChecked)}</div>
+      <div className="text-[15px] font-medium text-[#9fb5c8]">{formatShortDate(row.lastChecked)}</div>
 
       <div>
         <span

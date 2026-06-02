@@ -97,9 +97,7 @@ export function TabSettings({ initialSettings }: { initialSettings: SettingsData
           className="font-hand leading-[0.95] tracking-[0.01em] text-white"
           style={{ fontSize: "clamp(52px, 5.8vw, 78px)" }}
         >
-          CONTROL
-          <br />
-          PANEL
+          CONTROL PANEL
         </h1>
         <p className="mt-2 font-mono text-[16px] tracking-[0.01em] text-[#56565d]">
           Preferences, monitoring rules, and delivery setup.
@@ -258,7 +256,7 @@ export function TabSettings({ initialSettings }: { initialSettings: SettingsData
               {utilityBusy === "billing" ? "[...] Opening" : "[#] Billing Portal"}
             </button>
           </Row>
-          <div className="border-t border-[#15151c] px-6 py-5 font-mono text-[12px] uppercase tracking-[0.12em] text-[#4d4d54]">
+          <div className="border-t border-[#15151c] px-6 py-5 font-mono text-[12px] uppercase tracking-[0.12em] font-medium text-[#9fb5c8]">
             Version {settings.version}
           </div>
         </Section>

@@ -18,11 +18,13 @@ interface AnalyzeResultsProps {
 
 export function AnalyzeResults({ company, result }: AnalyzeResultsProps) {
   const signals = Array.isArray(result.signals) ? result.signals : [];
+  const redFlags = Array.isArray(result.redFlags) ? result.redFlags : [];
 
   return (
     <section className="space-y-6">
       <MetricStrip company={company} result={result} signals={signals} />
       <MemoPanel company={company} result={result} />
+      <MonitoringFactors factors={redFlags} />
       <BreakdownChart breakdown={result.scoreBreakdown} />
       <SignalList signals={signals} />
     </section>
@@ -160,6 +162,25 @@ function BreakdownChart({ breakdown }: { breakdown: ScoreBreakdown | null | unde
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function MonitoringFactors({ factors }: { factors: string[] }) {
+  if (!factors.length) return null;
+
+  return (
+    <div className="border border-[#3d2f12] bg-[rgba(22,16,5,0.32)] px-7 py-6">
+      <h3 className="mb-5 font-mono text-[13px] tracking-[0.18em] text-[#ff9900]">
+        RISK / MONITORING FACTORS
+      </h3>
+      <ul className="space-y-3">
+        {factors.map((factor, index) => (
+          <li className="font-mono text-[14px] leading-7 text-[#9c8a6f]" key={`${factor}-${index}`}>
+            {factor}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

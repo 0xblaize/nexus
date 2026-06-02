@@ -38,7 +38,7 @@ export function AgentPipeline({ logs, stage }: { logs: AgentLog[]; stage: Analyz
                 >
                   {agent.name}
                 </div>
-                <div className="mt-3 font-mono text-[16px] text-[#4d4d54]">{agent.role}</div>
+                <div className="mt-3 font-mono text-[16px] font-medium text-[#9fb5c8]">{agent.role}</div>
               </div>
               <div className="pt-1 font-mono text-[11px] uppercase tracking-[0.16em]" style={{ color }}>
                 {statusLabel}

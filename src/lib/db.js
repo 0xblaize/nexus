@@ -180,8 +180,15 @@ function ensureWatchlistEntry(db, company, options = {}) {
 
 async function withDb(fn, fallback) {
   if (!hasDatabaseConfig()) return fallback();
-  await ensureDatabaseSchema();
-  return fn(getSql());
+
+  try {
+    await ensureDatabaseSchema();
+    return await fn(getSql());
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "unknown database error";
+    console.error(`Database operation failed; using local file fallback: ${message}`);
+    return fallback();
+  }
 }
 
 export async function saveReport({ company, score, signals, scoreBreakdown, memo, keyInsight, confidence, recommendation }) {

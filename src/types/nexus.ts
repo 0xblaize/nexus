@@ -11,6 +11,7 @@ export type AgentLogTone = "info" | "success" | "warn" | "highlight";
 export interface Signal {
   id: string;
   type: SignalType;
+  label?: string;
   source: string;
   title: string;
   detail: string;
@@ -189,6 +190,7 @@ export interface PipelineResult {
   scoreBreakdown: ScoreBreakdown | null;
   confidence: ConfidenceLevel;
   keyInsight?: string;
+  redFlags?: string[];
   recommendation: RecommendationType;
   signals: Signal[];
   memo: Memo | null;
