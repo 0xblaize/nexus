@@ -277,7 +277,7 @@ export function TabSettings({
             <Input value={settings.displayName} onChange={(value) => update("displayName", value)} />
           </Row>
           <Row label="Email address">
-            <Input value={settings.email} onChange={(value) => update("email", value)} />
+            <span className="font-mono text-[14px] text-[#b7b7bd]">{settings.email}</span>
           </Row>
         </Section>
 
