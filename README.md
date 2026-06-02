@@ -1,109 +1,88 @@
-# NEXUS: Real-Time Corporate Target Intelligence Infrastructure
-NEXUS is an enterprise-grade corporate intelligence pipeline and monitoring engine built for institutional investors, venture capitalists, and data analysts. The platform handles complex, multi-threaded target scanning, text normalization, and risk analytics across unstructured global market data.
+# NEXUS: Real-Time Corporate Target Intelligence
 
-By automating heavy ingestion overhead, NEXUS normalizes raw web payloads into scannable data matrices and streams structured telemetry packages directly to centralized enterprise webhook architectures in under 600ms.
+NEXUS is an AI-assisted corporate intelligence dashboard for monitoring public market signals, operational risk, and strategic movement across companies. It combines Firecrawl web ingestion, Gemini-based signal extraction, PostgreSQL persistence, and a Next.js control panel for analysts who need structured risk telemetry instead of raw search results.
 
+The project is designed for a hackathon/demo workflow: a reviewer can run a target scan, inspect populated signal categories, manage alert settings, and see how free email delivery differs from paid enterprise integrations.
 
+## Core Features
 
-## Core Engineering Architecture
+- **Live signal ingestion**: Searches and extracts clean web content with Firecrawl before sending compact markdown context into the analysis pipeline.
+- **Broadened intelligence scope**: Detects regulatory, personnel, hiring, macro, crypto/BTC, market-volatility, and strategic-growth signals instead of only looking for M&A language.
+- **Structured scoring caps**: Normalizes outputs into predictable score bars, including Regulatory at 36 points and Personnel at 23 points.
+- **Persistent dashboard data**: Stores reports, watchlist entries, and settings in PostgreSQL when `DATABASE_URL` is configured, with local JSON fallback behavior for development.
+- **Dynamic account hydration**: Uses the active session email to generate display names when explicit profile names are missing.
+- **Hybrid alert plan**: Email alerts are free for every account. Slack and Microsoft Teams webhook delivery are gated behind Premium access.
+- **Premium upgrade screen**: Locked enterprise controls open an inline paywall explaining the $9/month Premium subscription.
+- **Account lifecycle controls**: Settings include a Danger Zone delete action that clears linked account records and returns the user to the landing page.
 
-- **Frictionless Data Ingestion**: Executes high-throughput web scraping utilizing direct headless parsing infrastructure to isolate core article markdown content while completely bypassing client-side rendering bottlenecks and script-heavy tracking code.
-- **Polymorphic Metric Normalization**: Evaluates target entities using a multi-category structural rubric, translating un-curated financial news into deterministic numerical data points against absolute score limits:**Regulatory Analytics**: Compliance updates and policy shifts mapped to a **36-point ceiling**.
-- **Personnel Volatility**: Leadership departures and board changes mapped to a **23-point ceiling**.
-- **Strategic Capacity Tracking**: Continuous observation of macro-economic scaling parameters and workforce growth/contraction velocities to detect structural vulnerabilities.
+## Architecture
 
-- **Asynchronous Processing Loops**: Decoupled ingestion logic that routes data seamlessly through serialization handlers without blocking the main browser application interface.
-- **Dynamic Session Synchronization**: Direct hydration hooks that bridge active user credentials with local React states to ensure crisp user-profile data rendering.
-- **Hybrid Feature Partitioning**: Monitored access controls providing standard email analytics summaries via a free tier while conditionally gating system webhooks (such as Slack or Microsoft Teams channels) for advanced integration pipelines.
-
-
-
-## Data Flow Blueprint
-
-```
-[ Frontend Client Dashboard ] ---> Fires Asynchronous Stream Request
-                                             |
-                                             v
-[ Normalization Layer ]       ---> Web Payload Processing & Extraction
-                                             |
-                                             v
-[ Analytics Parser Engine ]   ---> Schema Evaluation & Scoring (36pt / 23pt Caps)
-                                             |
-                                             v
-[ Persistence Layer ]         ---> Non-blocking Optimized PostgreSQL Commits
-                                             |
-                                             v
-[ Webhook Dispatcher ]        ---> Dispatches Structured Payloads to Endpoints
+```text
+Frontend Dashboard
+  -> API route request
+  -> Firecrawl search and markdown extraction
+  -> Gemini structured signal analysis
+  -> Score normalization and report persistence
+  -> Dashboard, watchlist, email, or enterprise webhook delivery
 ```
 
-1. **Ingestion & Isolation**: The request initializes a background search loop. A specialized web integration handles live data queries, stripping out heavy nesting, broken HTML strings, and site noise to provide a clean markdown string directly to the ingestion layer.
-2. **Structural Categorization**: The data engine reviews the raw text block, isolating key metrics like leadership changes, legal filings, and macro shifts (e.g., asset price actions or operational scaling) and parsing them directly into predictable JSON structures.
-3. **Database Integration Optimization**: Database table initializations (`CREATE TABLE IF NOT EXISTS`) are completely decoupled from active route handlers and placed in independent setup migrations, removing transactional table locks and eliminating query-path latency overhead.
-4. **System Output Dispatch**: The compiled summary is verified against active tier permission toggles. If authorized, the structured JSON is dispatched immediately via serverless handlers straight to client webhooks for automated workflow monitoring.
+Database schema setup is kept out of hot API routes. Run the migration command before starting the app so request handlers do not recreate tables or spam PostgreSQL `42P07` notice logs.
 
+## Tech Stack
 
+- Next.js App Router with TypeScript
+- React and Tailwind CSS
+- `firecrawl` SDK for web ingestion
+- `@google/genai` for Gemini analysis
+- PostgreSQL via `postgres`
+- NextAuth for session state
+- Microsoft Teams Adaptive Cards via webhook delivery
 
+## Environment Variables
 
-## Technical Infrastructure
+Create `.env.local` in the project root:
 
-- Next.js  TypeScript
-- Tailwind CSS v4 via `@tailwindcss/postcss`
-- `firecrawl` SDK for signal ingestion
-- `@google/genai` (Gemini) for scoring validation
-- PostgreSQL via `postgres` with local JSON fallback
-- `next-auth` authentication
-- Microsoft Teams Adaptive Cards via `TEAMS_WEBHOOK_URL`
-
-## Environment Variables Configuration
-Create a `.env.local` file in your project's root folder and add the following keys:
-
-Bash
-
-```
-# Data Connection and Extraction Keys
+```bash
 FIRECRAWL_API_KEY=your_firecrawl_api_key_here
-ANALYTICS_PROCESSING_KEY=your_processing_key_here
-
-# Database Connectivity
+GEMINI_API_KEY=your_gemini_api_key_here
 DATABASE_URL=postgresql://username:password@localhost:5432/nexus_db
-
-# Client Session Configurations
 NEXTAUTH_SECRET=your_nextauth_secret_here
+NEXTAUTH_URL=http://localhost:3000
+
+# Optional billing/demo links
+BILLING_CHECKOUT_URL=#
 NEXT_PUBLIC_BILLING_PORTAL_URL=#
+
+# Optional enterprise delivery
+TEAMS_WEBHOOK_URL=your_teams_webhook_url_here
 ```
 
-## Local Installation & Setup
+`BILLING_CHECKOUT_URL` is the target opened by the `$9/mo` Premium upgrade button. If it is left as `#`, the UI stays functional and shows a configuration notice instead of crashing.
 
-1. **Clone the Architecture**:
+## Local Setup
 
-git clone https://github.com/your-username/nexus-infrastructure.git
-cd nexus-infrastructure
-
-```
-2.  **Install Base Dependencies**:
-    ```bash
+```bash
 npm install
-```
-
-1. **Run Database Migrations**:
-Execute the standalone migration runner to spin up the system schemas (`app_reports`, `app_watchlist`, `app_settings`) prior to initiating local request loops.
-
 npm run db:migrate
-
-```
-4.  **Boot Development Server**:
-    ```bash
 npm run dev
 ```
 
-```
-Open [http://localhost:3000](http://localhost:3000) inside your browser window to monitor the dashboard.
-```
+Open [http://localhost:3000](http://localhost:3000) and sign in before testing the dashboard.
 
-## System Verification Protocol
-To verify the systemic integrity and routing speeds of the architecture during review sessions, run this live sequence:
+## Demo Flow
 
-1. **Navigate to Engine**: Open the `/analyze` route on the side navigation grid.
-2. **Input Target Query**: Enter an enterprise entity experiencing heavy public market transitions into the text box (e.g., `Binance`, `Tesla`, or `OpenAI`) and hit **Run**.
-3. **Observe Server Console**: Review the terminal logs to watch the request parse, log to the data table, and exit without encountering table locks or execution blocks.
-4. **Check Telemetry Webhook**: Inspect your active `webhook.site` terminal tab to verify that a structured JSON package containing populated category fields and strict point maximum scores has been cleanly delivered.
+1. Open the analysis screen.
+2. Search for a broad target such as `Tesla`, `Binance`, `OpenAI`, or `SpaceX`.
+3. Confirm that the Signal Feed populates with structured cards instead of returning an empty state.
+4. Open Settings and verify that the display name/email match the signed-in account.
+5. Toggle Email Alerts to confirm it remains free.
+6. Click Microsoft Teams or Slack controls on a free account to show the `$9/mo` Premium upgrade overlay.
+7. Use the configured master demo account to confirm Premium controls unlock without checkout.
+8. Use Danger Zone only when you intentionally want to delete the active account data.
+
+## Submission Notes
+
+- The master Premium override is implemented in `src/lib/user-profile.ts` for demo access.
+- Standard users default to the Free tier until a billing flow is connected.
+- Enterprise integrations are intentionally gated because Slack and Microsoft Teams represent team/workspace dispatch pipelines, while email summaries remain a basic user utility.
+- The app builds with `npm run build` and can be deployed to Vercel once production environment variables are configured.

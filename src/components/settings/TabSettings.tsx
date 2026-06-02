@@ -49,7 +49,9 @@ export function TabSettings({
     mergeSessionSettings(initialSettings, sessionUser),
   );
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
-  const [utilityBusy, setUtilityBusy] = useState<"" | "password" | "billing">("");
+  const [utilityBusy, setUtilityBusy] = useState<"" | "password" | "billing" | "checkout">("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const skipAutosave = useRef(true);
@@ -74,11 +76,17 @@ export function TabSettings({
 
   function update<K extends keyof SettingsData>(key: K, value: SettingsData[K]) {
     if (!paidPlan && (key === "teamsEnabled" || key === "teamsWebhook" || key === "slackAlerts")) {
-      setNotice("Enterprise delivery targets require the Pro analyst plan. Email alerts remain available on the free tier.");
+      openUpgradePrompt();
       return;
     }
 
     setSettings((current) => ({ ...current, [key]: value }));
+  }
+
+  function openUpgradePrompt() {
+    setError("");
+    setNotice("Email alerts remain free. Slack and Microsoft Teams require the $9/mo Premium plan.");
+    setUpgradeOpen(true);
   }
 
   async function persistSettings(nextSettings: SettingsData, options: { quiet?: boolean } = {}) {
@@ -152,6 +160,81 @@ export function TabSettings({
       );
     } finally {
       setUtilityBusy("");
+    }
+  }
+
+  async function handleUpgradeClick() {
+    setError("");
+    setNotice("");
+    setUtilityBusy("checkout");
+
+    try {
+      const response = await fetch("/api/billing/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        alreadyPremium?: boolean;
+        error?: string;
+        notice?: string;
+        url?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to start checkout.");
+      }
+
+      if (payload.alreadyPremium) {
+        setUpgradeOpen(false);
+        setNotice("This account already has Premium access.");
+        return;
+      }
+
+      if (!payload.url || payload.url === "#") {
+        setNotice(payload.notice || "Checkout is not connected yet. Configure BILLING_CHECKOUT_URL for the $9/mo Premium subscription.");
+        return;
+      }
+
+      window.location.href = payload.url;
+    } catch (checkoutError) {
+      setError(checkoutError instanceof Error ? checkoutError.message : "Unable to start checkout.");
+    } finally {
+      setUtilityBusy("");
+    }
+  }
+
+  async function handleDeleteAccount() {
+    const confirmed = window.confirm(
+      "Delete this NEXUS account and all linked settings/watchlist data? This cannot be undone.",
+    );
+    if (!confirmed) return;
+
+    setError("");
+    setNotice("");
+    setDeleteBusy(true);
+
+    try {
+      const response = await fetch("/api/account/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        redirectTo?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to delete account.");
+      }
+
+      window.localStorage.clear();
+      window.sessionStorage.clear();
+      window.location.href = payload.redirectTo || "/";
+    } catch (deleteError) {
+      setDeleteBusy(false);
+      setError(deleteError instanceof Error ? deleteError.message : "Unable to delete account.");
     }
   }
 
@@ -271,37 +354,48 @@ export function TabSettings({
         </Section>
 
         <Section title="Alert Delivery">
-          <Row description="Email summary metrics and alert packets are available on every account." label="Email alerts">
-            <Toggle checked={settings.emailAlerts} onChange={(value) => update("emailAlerts", value)} />
-          </Row>
-          <Row
-            badge="PRO"
-            description="Push high-severity risk cards directly into enterprise Teams channels."
-            label="Microsoft Teams"
-          >
-            <Toggle
-              checked={paidPlan && settings.teamsEnabled}
-              disabled={!paidPlan}
-              onChange={(value) => update("teamsEnabled", value)}
-            />
-          </Row>
-          {paidPlan && settings.teamsEnabled ? (
-            <div className="border-t border-[#15151c] px-6 py-5">
-              <div className="mb-2 font-mono text-[12px] tracking-[0.12em] text-[#555]">Teams webhook URL</div>
-              <Input value={settings.teamsWebhook} onChange={(value) => update("teamsWebhook", value)} />
-            </div>
-          ) : null}
-          <Row
-            badge="PRO"
-            description="Mirror signal events into continuous enterprise Slack channels."
-            label="Slack notifications"
-          >
-            <Toggle
-              checked={paidPlan && settings.slackAlerts}
-              disabled={!paidPlan}
-              onChange={(value) => update("slackAlerts", value)}
-            />
-          </Row>
+          <div className="relative">
+            <Row description="Email summary metrics and alert packets are available on every account." label="Email alerts">
+              <Toggle checked={settings.emailAlerts} onChange={(value) => update("emailAlerts", value)} />
+            </Row>
+            <Row
+              badge="PRO"
+              description="Push high-severity risk cards directly into enterprise Teams channels."
+              label="Microsoft Teams"
+            >
+              <Toggle
+                checked={paidPlan && settings.teamsEnabled}
+                locked={!paidPlan}
+                onChange={(value) => update("teamsEnabled", value)}
+              />
+            </Row>
+            {paidPlan && settings.teamsEnabled ? (
+              <div className="border-t border-[#15151c] px-6 py-5">
+                <div className="mb-2 font-mono text-[12px] tracking-[0.12em] text-[#555]">Teams webhook URL</div>
+                <Input value={settings.teamsWebhook} onChange={(value) => update("teamsWebhook", value)} />
+              </div>
+            ) : !paidPlan ? (
+              <LockedWebhookFields onInteract={openUpgradePrompt} />
+            ) : null}
+            <Row
+              badge="PRO"
+              description="Mirror signal events into continuous enterprise Slack channels."
+              label="Slack notifications"
+            >
+              <Toggle
+                checked={paidPlan && settings.slackAlerts}
+                locked={!paidPlan}
+                onChange={(value) => update("slackAlerts", value)}
+              />
+            </Row>
+            {!paidPlan && upgradeOpen ? (
+              <UpgradeOverlay
+                busy={utilityBusy === "checkout"}
+                onClose={() => setUpgradeOpen(false)}
+                onUpgradeClick={handleUpgradeClick}
+              />
+            ) : null}
+          </div>
         </Section>
 
         <Section title="Appearance">
@@ -345,13 +439,33 @@ export function TabSettings({
           <Row label="Billing">
             <button
               className="border border-[#23283f] px-5 py-3 font-mono text-[13px] uppercase tracking-[0.1em] text-[#c8d2ff] disabled:opacity-50"
-              disabled={utilityBusy === "billing"}
-              onClick={() => runUtilityAction("billing-portal")}
+              disabled={utilityBusy === "billing" || utilityBusy === "checkout"}
+              onClick={() => (paidPlan ? runUtilityAction("billing-portal") : handleUpgradeClick())}
               type="button"
             >
-              {utilityBusy === "billing" ? "[...] Opening" : "[#] Billing Portal"}
+              {utilityBusy === "billing" || utilityBusy === "checkout"
+                ? "[...] Opening"
+                : paidPlan
+                  ? "[#] Billing Portal"
+                  : "[#] Activate Enterprise Access ($9/mo)"}
             </button>
           </Row>
+          <div className="border-t border-[#3a1616] bg-[#160909] px-6 py-5">
+            <div className="font-mono text-[14px] uppercase tracking-[0.18em] text-[#ff7676]">
+              Danger Zone
+            </div>
+            <div className="mt-2 max-w-[420px] font-mono text-[12px] leading-6 tracking-[0.04em] text-[#805b5b]">
+              Permanently delete this account, local profile state, settings records, and watchlist data.
+            </div>
+            <button
+              className="mt-4 border border-[#ff2d2d]/50 bg-[#2a0d0d] px-5 py-3 font-mono text-[13px] uppercase tracking-[0.1em] text-[#ff9999] disabled:opacity-50"
+              disabled={deleteBusy}
+              onClick={handleDeleteAccount}
+              type="button"
+            >
+              {deleteBusy ? "[...] Deleting" : "[!] DELETE ACCOUNT"}
+            </button>
+          </div>
           <div className="border-t border-[#15151c] px-6 py-5 font-mono text-[12px] uppercase tracking-[0.12em] font-medium text-[#9fb5c8]">
             Version {settings.version}
           </div>
@@ -366,6 +480,74 @@ export function TabSettings({
           type="button"
         >
           {saveState === "saving" ? "Saving..." : saveState === "saved" ? "[OK] Saved" : "Save Changes"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function LockedWebhookFields({ onInteract }: { onInteract: () => void }) {
+  return (
+    <div className="border-t border-[#15151c] px-6 py-5">
+      <div className="mb-3 font-mono text-[12px] tracking-[0.12em] text-[#555]">
+        Enterprise webhook routing
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {["Teams webhook URL", "Slack webhook URL"].map((label) => (
+          <label className="block" key={label}>
+            <span className="sr-only">{label}</span>
+            <input
+              className="h-[46px] w-full cursor-pointer border border-[#29221a] bg-[#100f0d] px-4 font-mono text-[12px] text-[#7d6a4d] outline-none"
+              onClick={onInteract}
+              onFocus={onInteract}
+              placeholder={`${label} locked`}
+              readOnly
+            />
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function UpgradeOverlay({
+  busy,
+  onClose,
+  onUpgradeClick,
+}: {
+  busy: boolean;
+  onClose: () => void;
+  onUpgradeClick: () => void;
+}) {
+  return (
+    <div className="absolute inset-0 z-20 flex items-center justify-center border border-dashed border-[#4c3c1a] bg-black/90 p-6 backdrop-blur-sm">
+      <button
+        aria-label="Close upgrade overlay"
+        className="absolute right-4 top-4 border border-[#333] px-3 py-1 font-mono text-[12px] text-[#777]"
+        onClick={onClose}
+        type="button"
+      >
+        x
+      </button>
+      <div className="max-w-[420px] text-center">
+        <div className="font-mono text-[13px] font-bold uppercase tracking-[0.24em] text-[#ffb020]">
+          Upgrade to Enterprise Alerts
+        </div>
+        <p className="mt-4 font-mono text-[13px] leading-7 tracking-[0.03em] text-[#c9c1ad]">
+          Enterprise integrations (Slack & Microsoft Teams) require a Premium subscription.
+          Upgrade your workspace access for $9/month to activate real-time team dispatch pipelines.
+        </p>
+        <div className="mx-auto mt-5 w-fit border border-[#2b2b31] bg-[#101015] px-6 py-4">
+          <span className="font-bebas text-[46px] leading-none text-white">$9</span>
+          <span className="ml-2 font-mono text-[12px] uppercase tracking-[0.12em] text-[#777]">/mo</span>
+        </div>
+        <button
+          className="mt-5 w-full bg-[#c8ff00] px-5 py-4 font-mono text-[13px] font-bold uppercase tracking-[0.12em] text-black transition-colors hover:bg-[#dfff4c] disabled:opacity-60"
+          disabled={busy}
+          onClick={onUpgradeClick}
+          type="button"
+        >
+          {busy ? "[...] STARTING CHECKOUT" : "[#] ACTIVATE ENTERPRISE ACCESS ($9/mo)"}
         </button>
       </div>
     </div>
@@ -442,17 +624,20 @@ function Toggle({
   checked,
   onChange,
   disabled = false,
+  locked = false,
 }: {
   checked: boolean;
   onChange: (value: boolean) => void;
   disabled?: boolean;
+  locked?: boolean;
 }) {
   return (
     <button
+      aria-disabled={locked || disabled}
       aria-pressed={checked}
       className={[
         "relative h-[30px] w-[62px] border transition-colors",
-        disabled ? "cursor-not-allowed opacity-55" : "",
+        disabled || locked ? "cursor-pointer opacity-65" : "",
         checked ? "border-[#4f5b13] bg-[#182000]" : "border-[#23232c] bg-[#111118]",
       ].join(" ")}
       disabled={disabled}

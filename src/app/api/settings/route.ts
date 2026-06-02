@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/lib/auth";
 import { getSettings, updateSettings } from "@/lib/db";
+import { hydrateUserSession } from "@/lib/user-profile";
 import type { SettingsData } from "@/types/nexus";
 
 type SettingsSession = {
@@ -22,11 +23,12 @@ function sessionPlan(session: SettingsSession, fallback = "FREE_DEVELOPER") {
 }
 
 function applySessionSettings(settings: SettingsData, session: SettingsSession) {
-  const plan = sessionPlan(session, settings.currentPlan);
+  const hydrated = hydrateUserSession(session?.user?.email, session?.user?.name);
+  const plan = sessionPlan(session, hydrated.planTier);
   return {
     ...settings,
-    displayName: session?.user?.name || settings.displayName,
-    email: session?.user?.email || settings.email,
+    displayName: hydrated.displayName || settings.displayName,
+    email: hydrated.emailAddress || settings.email,
     currentPlan: isPaidPlan(plan) ? "Pro analyst" : "Free developer",
     teamsEnabled: isPaidPlan(plan) ? settings.teamsEnabled : false,
     slackAlerts: isPaidPlan(plan) ? settings.slackAlerts : false,
@@ -42,12 +44,13 @@ export async function GET() {
 export async function PATCH(request: Request) {
   const session = (await getServerSession(authOptions)) as SettingsSession;
   const body = await request.json().catch(() => ({}));
-  const plan = sessionPlan(session);
+  const hydrated = hydrateUserSession(session?.user?.email, session?.user?.name);
+  const plan = sessionPlan(session, hydrated.planTier);
   const paidPlan = isPaidPlan(plan);
   const sanitizedBody = {
     ...body,
-    displayName: session?.user?.name || body.displayName,
-    email: session?.user?.email || body.email,
+    displayName: hydrated.displayName || body.displayName,
+    email: hydrated.emailAddress || body.email,
     currentPlan: paidPlan ? "Pro analyst" : "Free developer",
     teamsEnabled: paidPlan ? Boolean(body.teamsEnabled) : false,
     slackAlerts: paidPlan ? Boolean(body.slackAlerts) : false,
