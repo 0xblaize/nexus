@@ -73,9 +73,28 @@ const SIGNAL_RULES = [
 
 let firecrawlClient = null;
 
+function disableBrokenProxyEnv() {
+  for (const key of ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"]) {
+    const value = process.env[key];
+    if (value && /127\.0\.0\.1:9\b|localhost:9\b/i.test(value)) {
+      delete process.env[key];
+    }
+  }
+
+  process.env.NO_PROXY = [
+    process.env.NO_PROXY,
+    "api.firecrawl.dev",
+    "firecrawl.dev",
+    ".firecrawl.dev",
+  ]
+    .filter(Boolean)
+    .join(",");
+}
+
 function getFirecrawlClient() {
   if (!process.env.FIRECRAWL_API_KEY) return null;
   if (!firecrawlClient) {
+    disableBrokenProxyEnv();
     firecrawlClient = new Firecrawl({ apiKey: process.env.FIRECRAWL_API_KEY });
   }
   return firecrawlClient;
