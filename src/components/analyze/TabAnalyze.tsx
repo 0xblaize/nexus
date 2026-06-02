@@ -112,6 +112,12 @@ export function TabAnalyze({ initialState }: { initialState?: AnalyzeInitialStat
             {error}
           </div>
         ) : null}
+
+        {isRunning ? (
+          <div className="border border-[#2a2f14] bg-[rgba(20,24,7,0.22)] px-5 py-4 font-mono text-[12px] uppercase tracking-[0.16em] text-[#c8ff00]">
+            Live pipeline running...
+          </div>
+        ) : null}
       </form>
 
       <div aria-hidden="true" style={{ height: 28 }} />

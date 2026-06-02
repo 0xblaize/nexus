@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenAI } from "@google/genai";
 
 const TYPE_WEIGHTS = {
   regulatory: 0.31,
@@ -48,72 +49,144 @@ function computeBaseScore(signals) {
   return { score, breakdown };
 }
 
-async function validateWithLLM(company, signals, baseScore) {
+function buildSignalSummary(signals) {
+  return signals
+    .slice(0, 20)
+    .map((signal) => ({
+      type: signal.type,
+      source: signal.source,
+      title: signal.title,
+      detail: signal.detail,
+      weight: signal.weight,
+      rawUrl: signal.rawUrl || "",
+      scrapedAt: signal.scrapedAt,
+    }));
+}
+
+function buildPrompt(company, signals, baseScore, breakdown) {
+  return `You are an M&A intelligence validation engine.
+
+Return only strict JSON with no markdown, commentary, or prose outside the JSON object.
+
+The JSON schema is:
+{
+  "validated_score": integer,
+  "confidence": "low" | "medium" | "high",
+  "key_insight": string,
+  "red_flags": string[],
+  "recommendation": "Buy interest" | "Monitor closely" | "Insufficient signals"
+}
+
+Company: ${company}
+Base score: ${baseScore}
+Breakdown: ${JSON.stringify(breakdown)}
+Signals: ${JSON.stringify(buildSignalSummary(signals))}
+
+Rules:
+- validated_score must be an integer between 0 and 97.
+- Keep key_insight to one sentence.
+- Keep red_flags concise.
+- Use only evidence present in the signals.`;
+}
+
+function parseStructuredJson(text, baseScore) {
+  const cleaned = text.replace(/```json|```/gi, "").trim();
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+
+  if (start === -1 || end === -1 || end <= start) {
+    throw new Error("LLM provider did not return a valid JSON object.");
+  }
+
+  const parsed = JSON.parse(cleaned.slice(start, end + 1));
+
+  return {
+    validated_score: Math.max(0, Math.min(97, Math.round(Number(parsed.validated_score) || baseScore))),
+    confidence:
+      parsed.confidence === "high" || parsed.confidence === "medium" || parsed.confidence === "low"
+        ? parsed.confidence
+        : "medium",
+    key_insight:
+      typeof parsed.key_insight === "string" && parsed.key_insight.trim()
+        ? parsed.key_insight.trim()
+        : "The selected model did not provide a usable key insight.",
+    red_flags: Array.isArray(parsed.red_flags)
+      ? parsed.red_flags.filter((flag) => typeof flag === "string" && flag.trim()).map((flag) => flag.trim())
+      : [],
+    recommendation:
+      parsed.recommendation === "Buy interest" ||
+      parsed.recommendation === "Monitor closely" ||
+      parsed.recommendation === "Insufficient signals"
+        ? parsed.recommendation
+        : baseScore >= 80
+          ? "Buy interest"
+          : baseScore >= 65
+            ? "Monitor closely"
+            : "Insufficient signals",
+  };
+}
+
+async function validateWithAnthropic(prompt, baseScore) {
   if (!process.env.ANTHROPIC_API_KEY) {
-    return {
-      validated_score: baseScore,
-      confidence: "low",
-      key_insight:
-        "Anthropic validation was skipped because ANTHROPIC_API_KEY is not configured.",
-      red_flags: ["External LLM validation was skipped because no API key is configured."],
-      recommendation: baseScore >= 70 ? "Monitor closely" : "Insufficient signals",
-    };
+    throw new Error("ANTHROPIC_API_KEY is not configured.");
   }
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  const signalSummary = signals
-    .map(
-      (signal) =>
-        `[${signal.type.toUpperCase()}] ${signal.title} - ${signal.detail?.slice(0, 120) || ""}`,
-    )
-    .join("\n");
-
-  const prompt = `You are a senior M&A intelligence analyst. Review these signals for "${company}" and assess whether the acquisition probability score of ${baseScore}/100 is appropriate.
-
-SIGNALS DETECTED:
-${signalSummary}
-
-Respond ONLY in this JSON format, no other text:
-{
-  "validated_score": <integer 0-97>,
-  "confidence": "<low|medium|high>",
-  "key_insight": "<one sentence, the single most important signal and why>",
-  "red_flags": ["<any signal that might be a false positive>"],
-  "recommendation": "<Buy interest | Monitor closely | Insufficient signals>"
-}`;
-
   const response = await client.messages.create({
     model: "claude-sonnet-4-20250514",
-    max_tokens: 500,
+    max_tokens: 600,
+    temperature: 0.1,
     messages: [{ role: "user", content: prompt }],
   });
 
-  const raw = response.content[0]?.text || "{}";
-  try {
-    return JSON.parse(raw.replace(/```json|```/g, "").trim());
-  } catch {
-    return {
-      validated_score: baseScore,
-      confidence: "medium",
-      key_insight: "LLM validation returned invalid JSON, so the base score was retained.",
-      red_flags: [],
-      recommendation: baseScore >= 70 ? "Monitor closely" : "Insufficient signals",
-    };
-  }
+  const raw = response.content
+    .filter((block) => block.type === "text")
+    .map((block) => block.text)
+    .join("\n");
+
+  return parseStructuredJson(raw, baseScore);
 }
 
-export async function agentB_scoreSignals(company, signals) {
+async function validateWithGemini(prompt, baseScore) {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error("GEMINI_API_KEY is not configured.");
+  }
+
+  const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const response = await client.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: prompt,
+    config: {
+      temperature: 0.1,
+      topP: 0.1,
+      maxOutputTokens: 600,
+    },
+  });
+
+  return parseStructuredJson(response.text || "", baseScore);
+}
+
+export async function agentB_scoreSignals(company, signals, options = {}) {
+  const provider = options.provider === "gemini" ? "gemini" : "anthropic";
+
   console.log(`  [B1] Running deterministic scoring on ${signals.length} signals...`);
   const { score: baseScore, breakdown } = computeBaseScore(signals);
   console.log(`  [B2] Base score: ${baseScore}/100`);
 
-  console.log("  [B3] Validating with LLM analyst...");
-  const llmValidation = await validateWithLLM(company, signals, baseScore);
+  const prompt = buildPrompt(company, signals, baseScore, breakdown);
+  console.log(`  [B3] Validating with ${provider === "gemini" ? "Google Gemini" : "Anthropic Claude"}...`);
+
+  const llmValidation =
+    provider === "gemini"
+      ? await validateWithGemini(prompt, baseScore)
+      : await validateWithAnthropic(prompt, baseScore);
+
   const finalScore = Math.round(
     0.6 * baseScore + 0.4 * llmValidation.validated_score,
   );
 
   return {
+    provider,
     score: finalScore,
     baseScore,
     llmValidatedScore: llmValidation.validated_score,

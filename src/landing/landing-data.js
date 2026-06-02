@@ -108,7 +108,7 @@ export const trackItems = [
       "Web Unlocker + SERP API scraping SEC, LinkedIn, and careers pages across thousands of domains simultaneously.",
   },
   {
-    label: "Gradient on Unstop",
+    label: "Anthropic Reasoning",
     score: "100",
     body:
       "Three-agent state machine with deterministic execution, financial scoring math, and structured JSON output at every stage.",

@@ -2,6 +2,8 @@ import { existsSync, readFileSync, writeFileSync } from "fs";
 import { randomUUID } from "crypto";
 import { join } from "path";
 
+import { ensureDatabaseSchema, getSql, hasDatabaseConfig } from "@/lib/postgres";
+
 const DB_PATH = join(process.cwd(), "nexus-reports.json");
 
 const DEFAULT_SETTINGS = {
@@ -82,21 +84,33 @@ function normalizeSettings(settings) {
         ? source.email
         : DEFAULT_SETTINGS.email,
     scoreThreshold:
-      typeof source.scoreThreshold === "number" ? source.scoreThreshold : DEFAULT_SETTINGS.scoreThreshold,
+      typeof source.scoreThreshold === "number"
+        ? source.scoreThreshold
+        : DEFAULT_SETTINGS.scoreThreshold,
     refreshInterval:
       ["1h", "3h", "6h", "12h", "24h"].includes(source.refreshInterval)
         ? source.refreshInterval
         : DEFAULT_SETTINGS.refreshInterval,
     weeklyDigest:
-      typeof source.weeklyDigest === "boolean" ? source.weeklyDigest : DEFAULT_SETTINGS.weeklyDigest,
+      typeof source.weeklyDigest === "boolean"
+        ? source.weeklyDigest
+        : DEFAULT_SETTINGS.weeklyDigest,
     teamsEnabled:
-      typeof source.teamsEnabled === "boolean" ? source.teamsEnabled : DEFAULT_SETTINGS.teamsEnabled,
+      typeof source.teamsEnabled === "boolean"
+        ? source.teamsEnabled
+        : DEFAULT_SETTINGS.teamsEnabled,
     teamsWebhook:
-      typeof source.teamsWebhook === "string" ? source.teamsWebhook : DEFAULT_SETTINGS.teamsWebhook,
+      typeof source.teamsWebhook === "string"
+        ? source.teamsWebhook
+        : DEFAULT_SETTINGS.teamsWebhook,
     emailAlerts:
-      typeof source.emailAlerts === "boolean" ? source.emailAlerts : DEFAULT_SETTINGS.emailAlerts,
+      typeof source.emailAlerts === "boolean"
+        ? source.emailAlerts
+        : DEFAULT_SETTINGS.emailAlerts,
     slackAlerts:
-      typeof source.slackAlerts === "boolean" ? source.slackAlerts : DEFAULT_SETTINGS.slackAlerts,
+      typeof source.slackAlerts === "boolean"
+        ? source.slackAlerts
+        : DEFAULT_SETTINGS.slackAlerts,
     darkMode:
       typeof source.darkMode === "boolean" ? source.darkMode : DEFAULT_SETTINGS.darkMode,
     language:
@@ -118,7 +132,7 @@ function normalizeSettings(settings) {
   };
 }
 
-function loadDB() {
+function loadFileDB() {
   if (!existsSync(DB_PATH)) return { reports: [], watchlist: [], settings: DEFAULT_SETTINGS };
 
   try {
@@ -129,7 +143,6 @@ function loadDB() {
     const watchlist = Array.isArray(parsed?.watchlist)
       ? parsed.watchlist.map(normalizeWatchlistEntry).filter(Boolean)
       : [];
-
     const settings = normalizeSettings(parsed?.settings);
 
     return { reports, watchlist, settings };
@@ -138,7 +151,7 @@ function loadDB() {
   }
 }
 
-function saveDB(db) {
+function saveFileDB(db) {
   writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
 }
 
@@ -165,89 +178,335 @@ function ensureWatchlistEntry(db, company, options = {}) {
   return entry;
 }
 
-export async function saveReport({ company, score, signals, scoreBreakdown, memo }) {
-  const db = loadDB();
-  const previous = db.reports.find(
-    (item) => item.company?.toLowerCase() === company.toLowerCase(),
+async function withDb(fn, fallback) {
+  if (!hasDatabaseConfig()) return fallback();
+  await ensureDatabaseSchema();
+  return fn(getSql());
+}
+
+export async function saveReport({ company, score, signals, scoreBreakdown, memo, keyInsight, confidence, recommendation }) {
+  return withDb(
+    async (sql) => {
+      const previous = await sql`
+        select score
+        from app_reports
+        where lower(company) = lower(${company})
+        order by created_at desc
+        limit 1
+      `;
+
+      const report = normalizeReport({
+        id: randomUUID(),
+        company,
+        score,
+        prevScore: previous[0]?.score ?? score,
+        recommendation:
+          recommendation ||
+          memo?.recommendation ||
+          (score >= 70 ? "Monitor closely" : "Insufficient signals"),
+        confidence: confidence || memo?.confidence || "medium",
+        signals: signals || [],
+        signalCount: signals?.length || 0,
+        scoreBreakdown: scoreBreakdown || null,
+        memo: memo || null,
+        keyInsight: keyInsight || null,
+        hasAlert: score >= 65,
+        createdAt: new Date().toISOString(),
+      });
+
+      await sql`
+        insert into app_reports (
+          id, company, score, prev_score, recommendation, confidence, signals,
+          signal_count, score_breakdown, memo, key_insight, has_alert, created_at
+        ) values (
+          ${report.id},
+          ${report.company},
+          ${report.score},
+          ${report.prevScore},
+          ${report.recommendation},
+          ${report.confidence},
+          ${sql.json(report.signals)},
+          ${report.signalCount},
+          ${sql.json(report.scoreBreakdown)},
+          ${sql.json(report.memo)},
+          ${report.keyInsight},
+          ${report.hasAlert},
+          ${report.createdAt}
+        )
+      `;
+
+      await sql`
+        insert into app_watchlist (company, status, alert_threshold, created_at)
+        values (${company}, 'active', 70, now())
+        on conflict (company) do nothing
+      `;
+
+      return report;
+    },
+    async () => {
+      const db = loadFileDB();
+      const previous = db.reports.find(
+        (item) => item.company?.toLowerCase() === company.toLowerCase(),
+      );
+      const report = normalizeReport({
+        id: randomUUID(),
+        company,
+        score,
+        prevScore: previous?.score ?? score,
+        recommendation:
+          recommendation ||
+          memo?.recommendation ||
+          (score >= 70 ? "Monitor closely" : "Insufficient signals"),
+        confidence: confidence || memo?.confidence || "medium",
+        signals: signals || [],
+        signalCount: signals?.length || 0,
+        scoreBreakdown: scoreBreakdown || null,
+        memo: memo || null,
+        keyInsight: keyInsight || null,
+        hasAlert: score >= 65,
+        createdAt: new Date().toISOString(),
+      });
+
+      db.reports.unshift(report);
+      db.reports = db.reports.slice(0, 200);
+      ensureWatchlistEntry(db, company);
+      saveFileDB(db);
+      return report;
+    },
   );
-  const report = normalizeReport({
-    id: randomUUID(),
-    company,
-    score,
-    prevScore: previous?.score ?? score,
-    recommendation:
-      memo?.recommendation ||
-      (score >= 70 ? "Monitor closely" : "Insufficient signals"),
-    confidence: memo?.confidence || "medium",
-    signals: signals || [],
-    signalCount: signals?.length || 0,
-    scoreBreakdown: scoreBreakdown || null,
-    memo: memo || null,
-    keyInsight: null,
-    hasAlert: score >= 65,
-    createdAt: new Date().toISOString(),
-  });
-
-  db.reports.unshift(report);
-  db.reports = db.reports.slice(0, 200);
-  ensureWatchlistEntry(db, company);
-  saveDB(db);
-
-  return report;
 }
 
 export async function getReports(limit = 20) {
-  const db = loadDB();
-  return db.reports.slice(0, limit);
+  return withDb(
+    async (sql) => {
+      const rows = await sql`
+        select *
+        from app_reports
+        order by created_at desc
+        limit ${limit}
+      `;
+
+      return rows.map((row) =>
+        normalizeReport({
+          id: row.id,
+          company: row.company,
+          score: row.score,
+          prevScore: row.prev_score,
+          recommendation: row.recommendation,
+          confidence: row.confidence,
+          signals: row.signals,
+          signalCount: row.signal_count,
+          scoreBreakdown: row.score_breakdown,
+          memo: row.memo,
+          keyInsight: row.key_insight,
+          hasAlert: row.has_alert,
+          createdAt: row.created_at,
+        }),
+      );
+    },
+    async () => {
+      const db = loadFileDB();
+      return db.reports.slice(0, limit);
+    },
+  );
 }
 
 export async function getReport(company) {
-  const db = loadDB();
-  return (
-    db.reports.find(
-      (report) => report.company.toLowerCase() === company.toLowerCase(),
-    ) || null
+  return withDb(
+    async (sql) => {
+      const rows = await sql`
+        select *
+        from app_reports
+        where lower(company) = lower(${company})
+        order by created_at desc
+        limit 1
+      `;
+
+      if (!rows[0]) return null;
+
+      return normalizeReport({
+        id: rows[0].id,
+        company: rows[0].company,
+        score: rows[0].score,
+        prevScore: rows[0].prev_score,
+        recommendation: rows[0].recommendation,
+        confidence: rows[0].confidence,
+        signals: rows[0].signals,
+        signalCount: rows[0].signal_count,
+        scoreBreakdown: rows[0].score_breakdown,
+        memo: rows[0].memo,
+        keyInsight: rows[0].key_insight,
+        hasAlert: rows[0].has_alert,
+        createdAt: rows[0].created_at,
+      });
+    },
+    async () => {
+      const db = loadFileDB();
+      return (
+        db.reports.find(
+          (report) => report.company.toLowerCase() === company.toLowerCase(),
+        ) || null
+      );
+    },
   );
 }
 
 export async function getWatchlist() {
-  const db = loadDB();
-  return db.watchlist;
+  return withDb(
+    async (sql) => {
+      const rows = await sql`
+        select company, status, alert_threshold, created_at
+        from app_watchlist
+        order by created_at desc
+      `;
+
+      return rows.map((row) =>
+        normalizeWatchlistEntry({
+          company: row.company,
+          status: row.status,
+          alertThreshold: row.alert_threshold,
+          createdAt: row.created_at,
+        }),
+      );
+    },
+    async () => {
+      const db = loadFileDB();
+      return db.watchlist;
+    },
+  );
 }
 
 export async function addWatchlistCompany(company, alertThreshold = 70) {
-  const db = loadDB();
-  const entry = ensureWatchlistEntry(db, company, { status: "active", alertThreshold });
-  saveDB(db);
-  return entry;
+  return withDb(
+    async (sql) => {
+      await sql`
+        insert into app_watchlist (company, status, alert_threshold, created_at)
+        values (${company}, 'active', ${alertThreshold}, now())
+        on conflict (company) do update
+        set status = 'active', alert_threshold = excluded.alert_threshold
+      `;
+
+      return normalizeWatchlistEntry({
+        company,
+        status: "active",
+        alertThreshold,
+        createdAt: new Date().toISOString(),
+      });
+    },
+    async () => {
+      const db = loadFileDB();
+      const entry = ensureWatchlistEntry(db, company, { status: "active", alertThreshold });
+      saveFileDB(db);
+      return entry;
+    },
+  );
 }
 
 export async function updateWatchlistStatus(company, status) {
-  const db = loadDB();
-  const entry = ensureWatchlistEntry(db, company, { status });
-  saveDB(db);
-  return entry;
+  return withDb(
+    async (sql) => {
+      await sql`
+        insert into app_watchlist (company, status, alert_threshold, created_at)
+        values (${company}, ${status}, 70, now())
+        on conflict (company) do update
+        set status = excluded.status
+      `;
+
+      const rows = await sql`
+        select company, status, alert_threshold, created_at
+        from app_watchlist
+        where company = ${company}
+        limit 1
+      `;
+
+      return normalizeWatchlistEntry({
+        company: rows[0].company,
+        status: rows[0].status,
+        alertThreshold: rows[0].alert_threshold,
+        createdAt: rows[0].created_at,
+      });
+    },
+    async () => {
+      const db = loadFileDB();
+      const entry = ensureWatchlistEntry(db, company, { status });
+      saveFileDB(db);
+      return entry;
+    },
+  );
 }
 
 export async function removeWatchlistCompany(company) {
-  const db = loadDB();
-  const companyKey = company.toLowerCase();
-  db.watchlist = db.watchlist.filter((item) => item.company.toLowerCase() !== companyKey);
-  saveDB(db);
-  return true;
+  return withDb(
+    async (sql) => {
+      await sql`
+        delete from app_watchlist
+        where lower(company) = lower(${company})
+      `;
+      return true;
+    },
+    async () => {
+      const db = loadFileDB();
+      const companyKey = company.toLowerCase();
+      db.watchlist = db.watchlist.filter((item) => item.company.toLowerCase() !== companyKey);
+      saveFileDB(db);
+      return true;
+    },
+  );
 }
 
 export async function getSettings() {
-  const db = loadDB();
-  return db.settings;
+  return withDb(
+    async (sql) => {
+      const rows = await sql`
+        select data
+        from app_settings
+        where id = 1
+        limit 1
+      `;
+
+      if (!rows[0]) {
+        await sql`
+          insert into app_settings (id, data, updated_at)
+          values (1, ${sql.json(DEFAULT_SETTINGS)}, now())
+          on conflict (id) do nothing
+        `;
+        return DEFAULT_SETTINGS;
+      }
+
+      return normalizeSettings(rows[0].data);
+    },
+    async () => {
+      const db = loadFileDB();
+      return db.settings;
+    },
+  );
 }
 
 export async function updateSettings(partialSettings) {
-  const db = loadDB();
-  db.settings = normalizeSettings({
-    ...db.settings,
-    ...partialSettings,
-  });
-  saveDB(db);
-  return db.settings;
+  return withDb(
+    async (sql) => {
+      const nextSettings = normalizeSettings({
+        ...(await getSettings()),
+        ...partialSettings,
+      });
+
+      await sql`
+        insert into app_settings (id, data, updated_at)
+        values (1, ${sql.json(nextSettings)}, now())
+        on conflict (id) do update
+        set data = excluded.data, updated_at = now()
+      `;
+
+      return nextSettings;
+    },
+    async () => {
+      const db = loadFileDB();
+      db.settings = normalizeSettings({
+        ...db.settings,
+        ...partialSettings,
+      });
+      saveFileDB(db);
+      return db.settings;
+    },
+  );
 }

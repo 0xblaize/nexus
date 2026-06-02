@@ -68,6 +68,7 @@ export function useAnalyzeRun(initialState?: AnalyzeInitialState | null) {
     });
 
     try {
+      let receivedResult = false;
       const response = await fetch("/api/analyze/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -104,6 +105,7 @@ export function useAnalyzeRun(initialState?: AnalyzeInitialState | null) {
           }
 
           if (event.type === "result") {
+            receivedResult = true;
             setState((current) => ({
               ...current,
               stage: "done",
@@ -117,6 +119,10 @@ export function useAnalyzeRun(initialState?: AnalyzeInitialState | null) {
             throw new Error(event.error);
           }
         }
+      }
+
+      if (!receivedResult) {
+        throw new Error("The analysis stream closed before a result was returned.");
       }
     } catch (error) {
       setState((current) => ({

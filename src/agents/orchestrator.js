@@ -17,6 +17,7 @@ function createTimestamp() {
 export async function runNexusPipeline(targetCompany, options = {}) {
   const {
     threshold = 65,
+    provider = "anthropic",
     deliverToTeams: shouldDeliver = true,
     logger: externalLogger,
   } = options;
@@ -43,10 +44,14 @@ export async function runNexusPipeline(targetCompany, options = {}) {
       company: targetCompany,
       score: 0,
       signals: [],
+      keyInsight: "No live signals were collected for this target.",
+      confidence: "low",
+      recommendation: "Insufficient signals",
       memo: null,
     });
     log("SYS", "No live signals detected for this target", "warn");
     return {
+      provider,
       score: 0,
       scoreBreakdown: null,
       confidence: "low",
@@ -60,7 +65,7 @@ export async function runNexusPipeline(targetCompany, options = {}) {
 
   console.log(chalk.dim("> Agent B: Running scoring model..."));
   log("B", "Running deterministic scoring model...", "info");
-  const scoreResult = await agentB_scoreSignals(targetCompany, rawSignals);
+  const scoreResult = await agentB_scoreSignals(targetCompany, rawSignals, { provider });
   console.log(chalk.yellow(`Score: ${scoreResult.score}/100 (threshold: ${threshold})\n`));
   log("B", `Acquisition probability score: ${scoreResult.score}/100`, "highlight");
 
@@ -70,11 +75,15 @@ export async function runNexusPipeline(targetCompany, options = {}) {
       score: scoreResult.score,
       signals: rawSignals,
       scoreBreakdown: scoreResult.breakdown,
+      keyInsight: scoreResult.keyInsight,
+      confidence: scoreResult.confidence,
+      recommendation: scoreResult.recommendation,
       memo: null,
     });
 
     log("SYS", `Threshold not crossed (${threshold}). Memo not generated.`, "warn");
     return {
+      provider,
       score: scoreResult.score,
       scoreBreakdown: scoreResult.breakdown,
       confidence: scoreResult.confidence,
@@ -104,6 +113,9 @@ export async function runNexusPipeline(targetCompany, options = {}) {
     score: scoreResult.score,
     signals: rawSignals,
     scoreBreakdown: scoreResult.breakdown,
+    keyInsight: scoreResult.keyInsight,
+    confidence: scoreResult.confidence,
+    recommendation: scoreResult.recommendation,
     memo,
   });
 
@@ -112,6 +124,7 @@ export async function runNexusPipeline(targetCompany, options = {}) {
   log("SYS", `Pipeline complete in ${elapsed}s`, "success");
 
   return {
+    provider,
     score: scoreResult.score,
     scoreBreakdown: scoreResult.breakdown,
     confidence: scoreResult.confidence,

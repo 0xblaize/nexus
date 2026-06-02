@@ -44,8 +44,7 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
         <p className="auth-eyebrow">NEXUS ACCESS</p>
         <h1 className="auth-title">Sign in to enter the dashboard.</h1>
         <p className="auth-copy">
-          Use Google or Gmail to move from the landing page into the live NEXUS
-          workspace.
+        Sign in with your Google account to access the dashboard and start analyzing your data.
         </p>
 
         {errorMessage ? <div className="auth-warning">{errorMessage}</div> : null}

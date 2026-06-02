@@ -1,4 +1,5 @@
 export type SignalType = "regulatory" | "personnel" | "hiring" | "news";
+export type LlmProvider = "anthropic" | "gemini";
 export type RecommendationType =
   | "Buy interest"
   | "Monitor closely"
@@ -42,6 +43,22 @@ export interface Memo {
   text: string;
   generatedAt: string;
   signalCount: number;
+  adaptiveCard: TeamsAdaptiveCardPayload;
+}
+
+export interface TeamsAdaptiveCardPayload {
+  type: "message";
+  attachments: Array<{
+    contentType: "application/vnd.microsoft.card.adaptive";
+    content: {
+      $schema: string;
+      type: "AdaptiveCard";
+      version: string;
+      body: unknown[];
+      actions?: unknown[];
+      msTeams?: Record<string, unknown>;
+    };
+  }>;
 }
 
 export interface Report {
@@ -147,6 +164,23 @@ export interface AgentLog {
   timestamp: string;
 }
 
+export interface McpArchiveRecord {
+  schema: "mcp.telemetry.run.v1";
+  provider: "gemini";
+  target: string;
+  generatedAt: string;
+  run: {
+    score: number;
+    confidence: ConfidenceLevel;
+    recommendation: RecommendationType;
+    signalCount: number;
+  };
+  context: {
+    keyInsight?: string;
+    reportId?: string;
+  };
+}
+
 export interface PipelineResult {
   score: number;
   baseScore?: number;
@@ -158,6 +192,8 @@ export interface PipelineResult {
   signals: Signal[];
   memo: Memo | null;
   reportId?: string;
+  provider?: LlmProvider;
+  archivalRecord?: McpArchiveRecord;
 }
 
 export interface AnalyzeResponse {
@@ -165,6 +201,8 @@ export interface AnalyzeResponse {
   company: string;
   result: PipelineResult;
   logs?: AgentLog[];
+  provider?: LlmProvider;
+  archivalRecord?: McpArchiveRecord;
 }
 
 export interface SavedReportResponse {

@@ -1,10 +1,14 @@
 import { runNexusPipeline } from "@/agents/orchestrator";
-import type { AgentLog } from "@/types/nexus";
+import type { AgentLog, LlmProvider } from "@/types/nexus";
 
 export const runtime = "nodejs";
 
 function encodeEvent(payload: unknown) {
   return new TextEncoder().encode(`${JSON.stringify(payload)}\n`);
+}
+
+function normalizeProvider(input: unknown): LlmProvider {
+  return input === "gemini" ? "gemini" : "anthropic";
 }
 
 export async function POST(request: Request) {
@@ -13,6 +17,7 @@ export async function POST(request: Request) {
   const threshold = Number.isFinite(Number(body.threshold))
     ? Number(body.threshold)
     : 65;
+  const provider = normalizeProvider(body.provider);
 
   if (!company) {
     return Response.json({ error: "company name required" }, { status: 400 });
@@ -27,6 +32,7 @@ export async function POST(request: Request) {
       try {
         const pipeline = await runNexusPipeline(company, {
           threshold,
+          provider,
           deliverToTeams: false,
           logger: (log: AgentLog) => send({ type: "log", log }),
         });
