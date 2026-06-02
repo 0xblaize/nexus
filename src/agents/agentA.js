@@ -253,31 +253,39 @@ function createSignal(company, item) {
   };
 }
 
-export async function agentA_collectSignals(company) {
-  const firecrawl = getFirecrawlClient();
+export async function agentA_collectSignals(company, logCallback) {
+  const log = logCallback || (() => {});
+  let signals = [];
+  let provider = "FIRECRAWL";
 
-  if (!firecrawl) {
-    console.log("  [A0] FIRECRAWL_API_KEY is missing. Live ingestion unavailable.");
-    return [];
-  }
-
+  // ==========================================
+  // TIER 1: PRIMARY INGESTION VIA FIRECRAWL
+  // ==========================================
   try {
-    console.log(`  [A1] Executing Firecrawl search for ${company}...`);
+    log("Tier 1: Querying live web and financial telemetry via Firecrawl...", "info");
+    const firecrawl = getFirecrawlClient();
+    if (!firecrawl) {
+      throw new Error("FIRECRAWL_API_KEY is not configured.");
+    }
+
     const searchResult = await firecrawl.search(buildSearchQuery(company), {
       limit: SEARCH_LIMIT,
       sources: ["news", "web"],
       tbs: "qdr:m",
-      timeout: 60000,
+      timeout: 30000,
       scrapeOptions: FIRECRAWL_SCRAPE_OPTIONS,
     });
 
     if (searchResult?.success === false) {
-      console.log("  [A1] Firecrawl search returned an unsuccessful response.");
-      return [];
+      throw new Error("Firecrawl response returned unsuccessful status.");
     }
 
     const items = getSearchItems(searchResult);
-    const signals = items
+    if (!items || !items.length) {
+      throw new Error("Firecrawl returned empty search result data.");
+    }
+
+    signals = items
       .filter((item) =>
         firstText(
           item?.title,
@@ -293,10 +301,64 @@ export async function agentA_collectSignals(company) {
       .slice(0, MAX_SIGNALS)
       .map((item) => createSignal(company, item));
 
-    console.log(`  [A1] Collected ${signals.length} live signals from Firecrawl.`);
-    return signals;
-  } catch (err) {
-    console.error("Firecrawl collection failed:", err.message);
-    return [];
+    log(`✅ Tier 1 Successful: Collected ${signals.length} web signals via Firecrawl.`, "success");
+    return { signals, provider };
+  } catch (firecrawlError) {
+    log(`⚠️ Tier 1 Failed (${firecrawlError.message}). Falling back to Tier 2: Tavily...`, "warn");
+    provider = "TAVILY";
   }
+
+  // ==========================================
+  // TIER 2: SECONDARY BACKUP VIA TAVILY AI
+  // ==========================================
+  if (provider === "TAVILY") {
+    try {
+      if (!process.env.TAVILY_API_KEY) {
+        throw new Error("TAVILY_API_KEY is not configured.");
+      }
+
+      log("Tier 2: Fetching live research index via Tavily REST endpoint...", "info");
+      const tavilyResponse = await fetch("https://api.tavily.com/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          api_key: process.env.TAVILY_API_KEY,
+          query: buildSearchQuery(company),
+          search_depth: "basic",
+          include_answer: false,
+          max_results: SEARCH_LIMIT,
+        }),
+      });
+
+      if (!tavilyResponse.ok) {
+        throw new Error(`Tavily search API returned status: ${tavilyResponse.status}`);
+      }
+
+      const resData = await tavilyResponse.json();
+      const results = resData.results || [];
+      if (!results.length) {
+        throw new Error("Tavily returned empty search results.");
+      }
+
+      const items = results.map((r) => ({
+        title: r.title,
+        markdown: r.content,
+        url: r.url,
+        snippet: r.content,
+        source: new URL(r.url).hostname.replace(/^www\./, ""),
+      }));
+
+      signals = items.map((item) => createSignal(company, item));
+      log(`✅ Tier 2 Successful: Collected ${signals.length} research signals via Tavily.`, "success");
+      return { signals, provider };
+    } catch (tavilyError) {
+      log(`⚠️ Tier 2 Failed (${tavilyError.message}). Falling back to Tier 3: Gemini Grounding...`, "warn");
+      provider = "GEMINI_GROUNDING";
+    }
+  }
+
+  // ==========================================
+  // TIER 3: TERTIARY FALLBACK FLAG
+  // ==========================================
+  return { signals: [], provider };
 }

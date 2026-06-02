@@ -1,5 +1,5 @@
 export type SignalType = "regulatory" | "personnel" | "hiring" | "news" | "patents" | "ir_traffic";
-export type LlmProvider = "gemini";
+export type LlmProvider = "gemini" | "FIRECRAWL" | "TAVILY" | "GEMINI_GROUNDING";
 export type RecommendationType =
   | "Buy interest"
   | "Monitor closely"

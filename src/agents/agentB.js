@@ -260,8 +260,116 @@ async function validateWithGemini(prompt, baseScore) {
   return parseStructuredJson(response.text || "", baseScore, "Gemini");
 }
 
+async function evaluateWithGeminiGrounding(company) {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error("GEMINI_API_KEY is not configured.");
+  }
+
+  const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const prompt = `Perform an in-depth live search for ${company} to identify corporate, market, macro, and operational risk signals.
+Evaluate the search findings and break them down into an enterprise JSON risk matrix containing:
+1. REGULATORY (Strictly score integers out of a max ceiling of 25pts)
+2. PERSONNEL (Strictly score integers out of a max ceiling of 15pts)
+3. HIRING (Workforce structure/contraction velocity tracking metric; strictly score integers out of a max ceiling of 15pts)
+4. PATENTS (Patent filings/IP leverage metrics; strictly score integers out of a max ceiling of 15pts)
+5. NEWS (Financial press velocity/coverage speed; strictly score integers out of a max ceiling of 15pts)
+6. IR_TRAFFIC (Investor relations page traffic surges; strictly score integers out of a max ceiling of 15pts)
+
+Provide structured JSON matching the schema precisely. Include a validated_score from 0 to 97, confidence rating, key_insight, red_flags list, and recommendation: "Buy interest" | "Monitor closely" | "Insufficient signals".`;
+
+  const response = await client.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: prompt,
+    config: {
+      temperature: 0.1,
+      topP: 0.1,
+      maxOutputTokens: 1600,
+      responseMimeType: "application/json",
+      responseSchema: GEMINI_VALIDATION_SCHEMA,
+      tools: [{ googleSearch: {} }],
+    },
+  });
+
+  const parsed = parseStructuredJson(response.text || "", 40, "Gemini Grounding");
+
+  // Extract search metadata URLs as mock signal objects
+  const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+  const groundedSignals = groundingChunks.map((chunk, index) => {
+    const url = chunk.web?.uri || "";
+    const title = chunk.web?.title || "Grounded Search Result";
+    return {
+      id: `ground-${index}-${Math.random().toString(36).substr(2, 5)}`,
+      company,
+      type: "news",
+      label: "News Velocity",
+      source: url ? new URL(url).hostname.replace(/^www\./, "") : "Google Grounding",
+      title,
+      detail: `Live search grounding source parsed from Google search telemetry.`,
+      weight: 1.0,
+      rawUrl: url,
+      scrapedAt: new Date().toISOString(),
+    };
+  });
+
+  return { parsed, groundedSignals };
+}
+
 export async function agentB_scoreSignals(company, signals, options = {}) {
   const provider = "gemini";
+
+  if (options.useGrounding) {
+    console.log(`  [B1] Running model directly via Tier 3: Google Search Grounding for ${company}...`);
+    try {
+      const { parsed, groundedSignals } = await evaluateWithGeminiGrounding(company);
+      const baseScore = parsed.validated_score;
+
+      const breakdown = {
+        regulatory: { signals: 1, contribution: Math.round(baseScore * 0.25), maxScore: 25, weight: 0.25 },
+        personnel: { signals: 1, contribution: Math.round(baseScore * 0.15), maxScore: 15, weight: 0.15 },
+        hiring: { signals: 1, contribution: Math.round(baseScore * 0.15), maxScore: 15, weight: 0.15 },
+        patents: { signals: 1, contribution: Math.round(baseScore * 0.15), maxScore: 15, weight: 0.15 },
+        news: { signals: 1, contribution: Math.round(baseScore * 0.15), maxScore: 15, weight: 0.15 },
+        ir_traffic: { signals: 1, contribution: Math.round(baseScore * 0.15), maxScore: 15, weight: 0.15 },
+      };
+
+      return {
+        provider,
+        score: baseScore,
+        baseScore,
+        llmValidatedScore: baseScore,
+        confidence: parsed.confidence,
+        keyInsight: parsed.key_insight,
+        redFlags: parsed.red_flags,
+        recommendation: parsed.recommendation,
+        breakdown,
+        groundedSignals,
+      };
+    } catch (err) {
+      console.error("Gemini grounding evaluation failed:", err);
+      // fallback
+      const baseScore = 30;
+      const breakdown = {
+        regulatory: { signals: 0, contribution: 0, maxScore: 25, weight: 0.25 },
+        personnel: { signals: 0, contribution: 0, maxScore: 15, weight: 0.15 },
+        hiring: { signals: 0, contribution: 0, maxScore: 15, weight: 0.15 },
+        patents: { signals: 0, contribution: 0, maxScore: 15, weight: 0.15 },
+        news: { signals: 0, contribution: 0, maxScore: 15, weight: 0.15 },
+        ir_traffic: { signals: 0, contribution: 0, maxScore: 15, weight: 0.15 },
+      };
+      return {
+        provider,
+        score: baseScore,
+        baseScore,
+        llmValidatedScore: baseScore,
+        confidence: "low",
+        keyInsight: "Grounded telemetry fallback active due to upstream failure.",
+        redFlags: ["Grounding failure"],
+        recommendation: "Insufficient signals",
+        breakdown,
+        groundedSignals: [],
+      };
+    }
+  }
 
   console.log(`  [B1] Running deterministic scoring on ${signals.length} signals...`);
   const { score: baseScore, breakdown } = computeBaseScore(signals);

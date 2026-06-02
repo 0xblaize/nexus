@@ -34,46 +34,35 @@ export async function runNexusPipeline(targetCompany, options = {}) {
   log("SYS", `nexus start --target "${targetCompany}"`, "highlight");
 
   console.log(chalk.dim("> Agent A: Collecting public web signals..."));
-  log("A", "Collecting public web signals...", "info");
-  const rawSignals = await agentA_collectSignals(targetCompany);
-  console.log(chalk.green(`Collected ${rawSignals.length} signals\n`));
-  log("A", `Collected ${rawSignals.length} signals`, rawSignals.length ? "success" : "warn");
+  const { signals: rawSignals, provider: activeProvider } = await agentA_collectSignals(targetCompany, (msg, type) => log("A", msg, type));
 
-  if (!rawSignals.length) {
-    await saveReport({
-      company: targetCompany,
-      score: 0,
-      signals: [],
-      keyInsight: "No live signals were collected for this target.",
-      confidence: "low",
-      recommendation: "Insufficient signals",
-      memo: null,
-    });
-    log("SYS", "No live signals detected for this target", "warn");
-    return {
-      provider,
-      score: 0,
-      scoreBreakdown: null,
-      confidence: "low",
-      keyInsight: "No live signals were collected for this target.",
-      recommendation: "Insufficient signals",
-      signals: [],
-      memo: null,
-      logs,
-    };
+  let scoreResult;
+  let pipelineSignals = rawSignals;
+
+  if (activeProvider === "GEMINI_GROUNDING") {
+    console.log(chalk.dim("> Ingestion Fallback Active: Routing search grounding to Agent B..."));
+    log("SYS", "⚡ Tier 3 Active: Invoking Native Gemini Search Grounding Matrix...", "highlight");
+
+    console.log(chalk.dim("> Agent B: Running grounded scoring model..."));
+    log("B", "Running score evaluation with native Google Grounding...", "info");
+    scoreResult = await agentB_scoreSignals(targetCompany, [], { provider, useGrounding: true });
+
+    pipelineSignals = scoreResult.groundedSignals || [];
+    console.log(chalk.yellow(`Score: ${scoreResult.score}/100 (threshold: ${threshold})\n`));
+    log("B", `Acquisition probability score: ${scoreResult.score}/100`, "highlight");
+  } else {
+    console.log(chalk.dim("> Agent B: Running scoring model..."));
+    log("B", "Running deterministic scoring model...", "info");
+    scoreResult = await agentB_scoreSignals(targetCompany, rawSignals, { provider });
+    console.log(chalk.yellow(`Score: ${scoreResult.score}/100 (threshold: ${threshold})\n`));
+    log("B", `Acquisition probability score: ${scoreResult.score}/100`, "highlight");
   }
-
-  console.log(chalk.dim("> Agent B: Running scoring model..."));
-  log("B", "Running deterministic scoring model...", "info");
-  const scoreResult = await agentB_scoreSignals(targetCompany, rawSignals, { provider });
-  console.log(chalk.yellow(`Score: ${scoreResult.score}/100 (threshold: ${threshold})\n`));
-  log("B", `Acquisition probability score: ${scoreResult.score}/100`, "highlight");
 
   if (scoreResult.score < threshold) {
     await saveReport({
       company: targetCompany,
       score: scoreResult.score,
-      signals: rawSignals,
+      signals: pipelineSignals,
       scoreBreakdown: scoreResult.breakdown,
       keyInsight: scoreResult.keyInsight,
       confidence: scoreResult.confidence,
@@ -84,14 +73,14 @@ export async function runNexusPipeline(targetCompany, options = {}) {
 
     log("SYS", `Threshold not crossed (${threshold}). Memo not generated.`, "warn");
     return {
-      provider,
+      provider: activeProvider,
       score: scoreResult.score,
       scoreBreakdown: scoreResult.breakdown,
       confidence: scoreResult.confidence,
       keyInsight: scoreResult.keyInsight,
       recommendation: scoreResult.recommendation,
       redFlags: scoreResult.redFlags,
-      signals: rawSignals,
+      signals: pipelineSignals,
       memo: null,
       logs,
     };
@@ -99,7 +88,7 @@ export async function runNexusPipeline(targetCompany, options = {}) {
 
   console.log(chalk.dim("> Agent C: Drafting investment intelligence memo..."));
   log("C", "Drafting investment intelligence memo...", "info");
-  const memo = await agentC_draftMemo(targetCompany, rawSignals, scoreResult);
+  const memo = await agentC_draftMemo(targetCompany, pipelineSignals, scoreResult);
   console.log(chalk.green("Memo drafted\n"));
   log("C", "Investment memo drafted", "success");
 
@@ -113,7 +102,7 @@ export async function runNexusPipeline(targetCompany, options = {}) {
   const report = await saveReport({
     company: targetCompany,
     score: scoreResult.score,
-    signals: rawSignals,
+    signals: pipelineSignals,
     scoreBreakdown: scoreResult.breakdown,
     keyInsight: scoreResult.keyInsight,
     confidence: scoreResult.confidence,
@@ -127,14 +116,14 @@ export async function runNexusPipeline(targetCompany, options = {}) {
   log("SYS", `Pipeline complete in ${elapsed}s`, "success");
 
   return {
-    provider,
+    provider: activeProvider,
     score: scoreResult.score,
     scoreBreakdown: scoreResult.breakdown,
     confidence: scoreResult.confidence,
     keyInsight: scoreResult.keyInsight,
     recommendation: scoreResult.recommendation,
     redFlags: scoreResult.redFlags,
-    signals: rawSignals,
+    signals: pipelineSignals,
     memo,
     reportId: report.id,
     logs,
