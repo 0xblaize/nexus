@@ -154,15 +154,15 @@ function buildWatchlistFromReports(
 function buildSignalFeed(reports: Report[]): SignalFeedItem[] {
   return reports
     .flatMap((report) =>
-      (Array.isArray(report.signals) ? report.signals : []).map((signal) => ({
-        id: signal.id,
+      (Array.isArray(report.signals) ? report.signals : []).map((signal, index) => ({
+        id: signal.id || `${report.id}-signal-${index}`,
         company: report.company,
-        type: signal.type,
-        source: signal.source,
-        title: signal.title,
-        detail: signal.detail,
-        weight: signal.weight,
-        scrapedAt: signal.scrapedAt,
+        type: isSignalType(signal.type) ? signal.type : "news",
+        source: signal.source || "Unknown source",
+        title: signal.title || signal.detail || "Untitled signal",
+        detail: signal.detail || signal.title || "No signal detail available.",
+        weight: Number.isFinite(Number(signal.weight)) ? Number(signal.weight) : 0.45,
+        scrapedAt: signal.scrapedAt || report.createdAt,
       })),
     )
     .sort(
@@ -170,6 +170,10 @@ function buildSignalFeed(reports: Report[]): SignalFeedItem[] {
         new Date(right.scrapedAt).getTime() - new Date(left.scrapedAt).getTime(),
     )
     .slice(0, 80);
+}
+
+function isSignalType(value: unknown): value is SignalType {
+  return value === "regulatory" || value === "personnel" || value === "hiring" || value === "news";
 }
 
 function buildSignalSummary(feed: SignalFeedItem[]): DashboardSignalSummary[] {

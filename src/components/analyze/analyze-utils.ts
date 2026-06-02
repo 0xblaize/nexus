@@ -2,6 +2,13 @@ import type { AgentCode, AgentLogTone, ScoreBreakdown, SignalType } from "@/type
 
 export const SIGNAL_TYPES: SignalType[] = ["regulatory", "personnel", "hiring", "news"];
 
+export const SIGNAL_POINT_CAPS: Record<SignalType, number> = {
+  regulatory: 36,
+  personnel: 23,
+  hiring: 18,
+  news: 23,
+};
+
 export const SIGNAL_LABELS: Record<SignalType, string> = {
   regulatory: "REGULATORY",
   personnel: "PERSONNEL",
@@ -59,7 +66,7 @@ export function getBreakdownMax(breakdown: ScoreBreakdown | null | undefined) {
   if (!breakdown) return 1;
   return Math.max(
     1,
-    ...SIGNAL_TYPES.map((type) => normalizeContribution(breakdown[type]?.contribution)),
+    ...SIGNAL_TYPES.map((type) => breakdown[type]?.maxScore ?? SIGNAL_POINT_CAPS[type]),
   );
 }
 

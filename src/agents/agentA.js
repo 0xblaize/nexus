@@ -64,9 +64,9 @@ const SIGNAL_RULES = [
     type: "news",
     label: "Market speculation",
     pattern:
-      /\b(ipo|public listing|valuation|funding|financing|capital raise|secondary sale|share sale|shares|stock|analyst|price target|market cap|wall street)\b/i,
+      /\b(ipo|public listing|valuation|funding|financing|capital raise|secondary sale|share sale|shares|stock|analyst|price target|market cap|wall street|bitcoin|btc|crypto|cryptocurrency|token|digital asset|volatility|macro|inflation|rates|liquidity)\b/i,
     detail:
-      "Market speculation, valuation movement, and capital-market activity are valid strategic signals.",
+      "Market speculation, valuation movement, macro volatility, and capital-market activity are valid strategic signals.",
     weight: 0.85,
   },
   {
@@ -165,9 +165,9 @@ function sourceFromUrl(url) {
 
 function buildSearchQuery(company) {
   return [
-    "latest news market reaction financial analysis risk signal",
+    "latest market stability macro developments volatility strategic risk signal news",
     company,
-    "corporate development investment valuation funding policy regulation supply chain leadership",
+    "corporate development investment valuation funding crypto policy regulation supply chain leadership hiring operations",
   ].join(" ");
 }
 

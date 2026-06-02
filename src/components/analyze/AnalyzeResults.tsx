@@ -2,11 +2,11 @@
 
 import type { PipelineResult, ScoreBreakdown, Signal } from "@/types/nexus";
 import {
-  getBreakdownMax,
   getScoreColor,
   getScoreLabel,
   getSignalColor,
   SIGNAL_LABELS,
+  SIGNAL_POINT_CAPS,
   SIGNAL_TYPES,
   normalizeContribution,
 } from "@/components/analyze/analyze-utils";
@@ -127,8 +127,6 @@ function MemoPanel({ company, result }: { company: string; result: PipelineResul
 }
 
 function BreakdownChart({ breakdown }: { breakdown: ScoreBreakdown | null | undefined }) {
-  const max = getBreakdownMax(breakdown);
-
   return (
     <div className="border border-[#1a1a22] bg-[#050505] px-7 py-6">
       <div className="mb-6 flex items-center justify-between">
@@ -139,7 +137,8 @@ function BreakdownChart({ breakdown }: { breakdown: ScoreBreakdown | null | unde
         {SIGNAL_TYPES.map((type) => {
           const item = breakdown?.[type];
           const contribution = normalizeContribution(item?.contribution);
-          const width = Math.max(0, Math.min(100, (contribution / max) * 100));
+          const maxPoints = item?.maxScore ?? SIGNAL_POINT_CAPS[type];
+          const width = Math.max(0, Math.min(100, (contribution / maxPoints) * 100));
 
           return (
             <div className="grid grid-cols-[120px_1fr_120px] items-center gap-4" key={type}>
@@ -156,7 +155,7 @@ function BreakdownChart({ breakdown }: { breakdown: ScoreBreakdown | null | unde
                 />
               </div>
               <span className="text-right font-mono text-[12px] text-[#666]">
-                {item?.signals ?? 0} / {contribution}pts
+                {contribution} / {maxPoints}pts
               </span>
             </div>
           );

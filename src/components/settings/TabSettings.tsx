@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { SettingsData } from "@/types/nexus";
 
@@ -13,25 +13,86 @@ const PRESETS = [
 const REFRESH_OPTIONS = ["1h", "3h", "6h", "12h", "24h"] as const;
 const LANGUAGES = ["English", "French", "German", "Spanish"] as const;
 
-export function TabSettings({ initialSettings }: { initialSettings: SettingsData }) {
-  const [settings, setSettings] = useState<SettingsData>(initialSettings);
+interface SessionUserSettings {
+  name: string;
+  email: string;
+  plan: string;
+}
+
+function isPaidPlan(plan: string) {
+  return plan === "PRO_ANALYST" || plan.toLowerCase().includes("pro");
+}
+
+function mergeSessionSettings(settings: SettingsData, sessionUser: SessionUserSettings | null): SettingsData {
+  if (!sessionUser) return settings;
+  const paidPlan = isPaidPlan(sessionUser.plan);
+
+  return {
+    ...settings,
+    displayName: sessionUser.name || settings.displayName,
+    email: sessionUser.email || settings.email,
+    currentPlan: paidPlan ? "Pro analyst" : "Free developer",
+    teamsEnabled: paidPlan ? settings.teamsEnabled : false,
+    teamsWebhook: paidPlan ? settings.teamsWebhook : "",
+    slackAlerts: paidPlan ? settings.slackAlerts : false,
+  };
+}
+
+export function TabSettings({
+  initialSettings,
+  sessionUser,
+}: {
+  initialSettings: SettingsData;
+  sessionUser: SessionUserSettings | null;
+}) {
+  const [settings, setSettings] = useState<SettingsData>(() =>
+    mergeSessionSettings(initialSettings, sessionUser),
+  );
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [utilityBusy, setUtilityBusy] = useState<"" | "password" | "billing">("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const skipAutosave = useRef(true);
+  const paidPlan = isPaidPlan(sessionUser?.plan || settings.currentPlan);
+
+  useEffect(() => {
+    setSettings((current) => mergeSessionSettings(current, sessionUser));
+  }, [sessionUser]);
+
+  useEffect(() => {
+    if (skipAutosave.current) {
+      skipAutosave.current = false;
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void persistSettings(settings, { quiet: true });
+    }, 700);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [settings]);
 
   function update<K extends keyof SettingsData>(key: K, value: SettingsData[K]) {
+    if (!paidPlan && (key === "teamsEnabled" || key === "teamsWebhook" || key === "slackAlerts")) {
+      setNotice("Enterprise delivery targets require the Pro analyst plan. Email alerts remain available on the free tier.");
+      return;
+    }
+
     setSettings((current) => ({ ...current, [key]: value }));
   }
 
-  async function handleSave() {
-    setSaveState("saving");
+  async function persistSettings(nextSettings: SettingsData, options: { quiet?: boolean } = {}) {
+    if (!options.quiet) {
+      setSaveState("saving");
+    }
     setError("");
+    setNotice("");
 
     try {
       const response = await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(settings),
+        body: JSON.stringify(nextSettings),
       });
 
       if (!response.ok) {
@@ -39,7 +100,10 @@ export function TabSettings({ initialSettings }: { initialSettings: SettingsData
       }
 
       const payload = (await response.json()) as { settings: SettingsData };
-      setSettings(payload.settings);
+      const mergedSettings = mergeSessionSettings(payload.settings, sessionUser);
+      if (JSON.stringify(mergedSettings) !== JSON.stringify(nextSettings)) {
+        setSettings(mergedSettings);
+      }
       setSaveState("saved");
       window.setTimeout(() => setSaveState("idle"), 2500);
     } catch (saveError) {
@@ -48,8 +112,13 @@ export function TabSettings({ initialSettings }: { initialSettings: SettingsData
     }
   }
 
+  async function handleSave() {
+    await persistSettings(settings);
+  }
+
   async function runUtilityAction(action: "change-password" | "billing-portal") {
     setError("");
+    setNotice("");
     setUtilityBusy(action === "change-password" ? "password" : "billing");
 
     try {
@@ -61,11 +130,17 @@ export function TabSettings({ initialSettings }: { initialSettings: SettingsData
 
       const payload = (await response.json().catch(() => ({}))) as {
         error?: string;
+        notice?: string;
         url?: string;
       };
 
       if (!response.ok || !payload.url) {
         throw new Error(payload.error || "Unable to complete settings action.");
+      }
+
+      if (payload.url === "#" || payload.notice) {
+        setNotice(payload.notice || "Billing portal is not connected for this account.");
+        return;
       }
 
       window.open(payload.url, "_blank", "noopener,noreferrer");
@@ -107,6 +182,11 @@ export function TabSettings({ initialSettings }: { initialSettings: SettingsData
       {error ? (
         <div className="mb-6 border border-[#ff2d2d]/40 bg-[#ff2d2d]/5 px-5 py-4 font-mono text-[12px] tracking-[0.04em] text-[#ff9999]">
           {error}
+        </div>
+      ) : null}
+      {notice ? (
+        <div className="mb-6 border border-[#ff9900]/40 bg-[#ff9900]/5 px-5 py-4 font-mono text-[12px] tracking-[0.04em] text-[#d7b37a]">
+          {notice}
         </div>
       ) : null}
 
@@ -191,20 +271,36 @@ export function TabSettings({ initialSettings }: { initialSettings: SettingsData
         </Section>
 
         <Section title="Alert Delivery">
-          <Row description="Push new acquisition alerts directly into your Teams channel." label="Microsoft Teams">
-            <Toggle checked={settings.teamsEnabled} onChange={(value) => update("teamsEnabled", value)} />
+          <Row description="Email summary metrics and alert packets are available on every account." label="Email alerts">
+            <Toggle checked={settings.emailAlerts} onChange={(value) => update("emailAlerts", value)} />
           </Row>
-          {settings.teamsEnabled ? (
+          <Row
+            badge="PRO"
+            description="Push high-severity risk cards directly into enterprise Teams channels."
+            label="Microsoft Teams"
+          >
+            <Toggle
+              checked={paidPlan && settings.teamsEnabled}
+              disabled={!paidPlan}
+              onChange={(value) => update("teamsEnabled", value)}
+            />
+          </Row>
+          {paidPlan && settings.teamsEnabled ? (
             <div className="border-t border-[#15151c] px-6 py-5">
               <div className="mb-2 font-mono text-[12px] tracking-[0.12em] text-[#555]">Teams webhook URL</div>
               <Input value={settings.teamsWebhook} onChange={(value) => update("teamsWebhook", value)} />
             </div>
           ) : null}
-          <Row description="Send the same alert packets to your primary email inbox." label="Email alerts">
-            <Toggle checked={settings.emailAlerts} onChange={(value) => update("emailAlerts", value)} />
-          </Row>
-          <Row description="Mirror signal events into Slack for the deal team." label="Slack notifications">
-            <Toggle checked={settings.slackAlerts} onChange={(value) => update("slackAlerts", value)} />
+          <Row
+            badge="PRO"
+            description="Mirror signal events into continuous enterprise Slack channels."
+            label="Slack notifications"
+          >
+            <Toggle
+              checked={paidPlan && settings.slackAlerts}
+              disabled={!paidPlan}
+              onChange={(value) => update("slackAlerts", value)}
+            />
           </Row>
         </Section>
 
@@ -296,16 +392,25 @@ function Section({
 function Row({
   label,
   description,
+  badge,
   children,
 }: {
   label: string;
   description?: string;
+  badge?: string;
   children: React.ReactNode;
 }) {
   return (
     <div className="flex items-start justify-between gap-6 border-t border-[#15151c] px-6 py-5 first:border-t-0">
       <div className="max-w-[300px]">
-        <div className="font-mono text-[14px] tracking-[0.08em] text-[#777]">{label}</div>
+        <div className="flex items-center gap-2 font-mono text-[14px] tracking-[0.08em] text-[#777]">
+          <span>{label}</span>
+          {badge ? (
+            <span className="bg-[#ff9900] px-1.5 py-0.5 text-[9px] font-black tracking-[0.12em] text-black">
+              {badge}
+            </span>
+          ) : null}
+        </div>
         {description ? (
           <div className="mt-2 font-mono text-[12px] leading-6 tracking-[0.04em] text-[#4e4e55]">
             {description}
@@ -336,17 +441,21 @@ function Input({
 function Toggle({
   checked,
   onChange,
+  disabled = false,
 }: {
   checked: boolean;
   onChange: (value: boolean) => void;
+  disabled?: boolean;
 }) {
   return (
     <button
       aria-pressed={checked}
       className={[
         "relative h-[30px] w-[62px] border transition-colors",
+        disabled ? "cursor-not-allowed opacity-55" : "",
         checked ? "border-[#4f5b13] bg-[#182000]" : "border-[#23232c] bg-[#111118]",
       ].join(" ")}
+      disabled={disabled}
       onClick={() => onChange(!checked)}
       type="button"
     >

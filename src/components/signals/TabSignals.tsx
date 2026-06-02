@@ -87,9 +87,15 @@ export function TabSignals({ feed, summary }: TabSignalsProps) {
       </section>
 
       <section className="mt-7 overflow-hidden border border-[#23232c] bg-black/20">
-        {filteredFeed.map((item, index) => (
-          <SignalFeedRow item={item} key={`${item.id}-${index}`} />
-        ))}
+        {filteredFeed.length ? (
+          filteredFeed.map((item, index) => (
+            <SignalFeedRow item={item} key={`${item.id}-${index}`} />
+          ))
+        ) : (
+          <div className="px-6 py-10 font-mono text-[14px] leading-7 text-[#666]">
+            No saved signals match this view yet. Run an analysis from the Analyze page to populate the live stream.
+          </div>
+        )}
       </section>
     </div>
   );

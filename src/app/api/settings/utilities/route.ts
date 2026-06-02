@@ -16,18 +16,17 @@ export async function POST(request: Request) {
   }
 
   if (action === "billing-portal") {
-    const billingUrl = process.env.BILLING_PORTAL_URL || "";
-    if (!billingUrl) {
-      return NextResponse.json(
-        { error: "BILLING_PORTAL_URL is not configured" },
-        { status: 500 },
-      );
-    }
+    const billingUrl =
+      process.env.NEXT_PUBLIC_BILLING_PORTAL_URL || process.env.BILLING_PORTAL_URL || "#";
 
     return NextResponse.json({
       success: true,
       action,
       url: billingUrl,
+      notice:
+        billingUrl === "#"
+          ? "Billing portal is not connected for this free developer account."
+          : undefined,
     });
   }
 

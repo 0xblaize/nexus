@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "cli": "node cli.js",
-    "analyze": "node cli.js"
+    "analyze": "node cli.js",
+    "db:migrate": "node scripts/migrate-db.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.7.0",

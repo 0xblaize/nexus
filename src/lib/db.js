@@ -12,13 +12,13 @@ const DEFAULT_SETTINGS = {
   scoreThreshold: 65,
   refreshInterval: "6h",
   weeklyDigest: true,
-  teamsEnabled: Boolean(process.env.TEAMS_WEBHOOK_URL),
+  teamsEnabled: false,
   teamsWebhook: process.env.TEAMS_WEBHOOK_URL || "",
   emailAlerts: true,
   slackAlerts: false,
   darkMode: true,
   language: "English",
-  currentPlan: "Pro analyst",
+  currentPlan: "Free developer",
   usageUsed: 0,
   usageTotal: 25000,
   version: "1.0.0",
@@ -182,7 +182,9 @@ async function withDb(fn, fallback) {
   if (!hasDatabaseConfig()) return fallback();
 
   try {
-    await ensureDatabaseSchema();
+    if (process.env.NEXUS_AUTO_MIGRATE === "true") {
+      await ensureDatabaseSchema();
+    }
     return await fn(getSql());
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown database error";

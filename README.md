@@ -88,7 +88,7 @@ npm install
 1. **Run Database Migrations**:
 Execute the standalone migration runner to spin up the system schemas (`app_reports`, `app_watchlist`, `app_settings`) prior to initiating local request loops.
 
-npm run db:setup
+npm run db:migrate
 
 ```
 4.  **Boot Development Server**:

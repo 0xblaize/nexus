@@ -25,6 +25,7 @@ export interface Signal {
 export interface ScoreBreakdownItem {
   signals: number;
   contribution: number;
+  maxScore?: number;
   weight: number;
   avgSignalWeight?: number;
   volumeBonus?: number;

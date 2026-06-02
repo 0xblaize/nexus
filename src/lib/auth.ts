@@ -35,4 +35,21 @@ export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
   },
+  callbacks: {
+    async jwt({ token, user }) {
+      if (user && !(token as Record<string, unknown>).plan) {
+        (token as Record<string, unknown>).plan = process.env.DEFAULT_USER_PLAN || "FREE_DEVELOPER";
+      }
+
+      return token;
+    },
+    async session({ session, token }) {
+      if (session.user) {
+        (session.user as Record<string, unknown>).plan =
+          (token as Record<string, unknown>).plan || "FREE_DEVELOPER";
+      }
+
+      return session;
+    },
+  },
 };

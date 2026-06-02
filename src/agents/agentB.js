@@ -1,10 +1,10 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const TYPE_WEIGHTS = {
-  regulatory: 0.31,
-  personnel: 0.28,
-  hiring: 0.22,
-  news: 0.19,
+const TYPE_POINT_CAPS = {
+  regulatory: 36,
+  personnel: 23,
+  hiring: 18,
+  news: 23,
 };
 
 const RECOMMENDATIONS = ["Buy interest", "Monitor closely", "Insufficient signals"];
@@ -56,12 +56,13 @@ function computeBaseScore(signals) {
   }
 
   const breakdown = {};
-  let totalScore = 0;
+  let totalPoints = 0;
 
-  for (const [type, weight] of Object.entries(TYPE_WEIGHTS)) {
+  for (const [type, maxScore] of Object.entries(TYPE_POINT_CAPS)) {
+    const weight = maxScore / 100;
     const typeSignals = byType[type] || [];
     if (!typeSignals.length) {
-      breakdown[type] = { signals: 0, contribution: 0, weight };
+      breakdown[type] = { signals: 0, contribution: 0, maxScore, weight };
       continue;
     }
 
@@ -73,19 +74,23 @@ function computeBaseScore(signals) {
       Math.log(typeSignals.length + 1) / Math.log(4),
       1,
     );
-    const contribution = weight * cappedSignalWeight * (0.7 + 0.3 * volumeBonus);
+    const contribution = Math.min(
+      maxScore,
+      maxScore * cappedSignalWeight * (0.7 + 0.3 * volumeBonus),
+    );
 
     breakdown[type] = {
       signals: typeSignals.length,
-      contribution: Number(contribution.toFixed(4)),
+      contribution: Number(contribution.toFixed(2)),
+      maxScore,
       avgSignalWeight: Number(cappedSignalWeight.toFixed(3)),
       volumeBonus: Number(volumeBonus.toFixed(3)),
       weight,
     };
-    totalScore += contribution;
+    totalPoints += contribution;
   }
 
-  const laneScore = Math.min(Math.round((totalScore * 100) / 0.8), 97);
+  const laneScore = Math.min(Math.round(totalPoints), 97);
   const weightedSignalTotal = signals.reduce((sum, signal) => {
     const weight = Number.isFinite(Number(signal.weight)) ? Number(signal.weight) : 0.45;
     return sum + Math.max(0, Math.min(weight, 1.3));
@@ -117,7 +122,9 @@ function buildSignalSummary(signals) {
 }
 
 function buildPrompt(company, signals, baseScore, breakdown) {
-  return `You are an M&A intelligence validation engine.
+  return `You are the NEXUS intelligence validation engine for corporate, market, macro, and operational risk signals.
+
+Do not limit validation to M&A language. BTC/crypto moves, market volatility, funding or valuation shifts, regulatory friction, leadership changes, hiring velocity, scaling milestones, supply-chain pressure, and major operational changes are valid signals when they affect ${company}'s risk or strategic profile.
 
 Return only strict JSON with no markdown, commentary, or prose outside the JSON object.
 
@@ -139,6 +146,7 @@ Rules:
 - validated_score must be an integer between 0 and 97.
 - Keep key_insight to one sentence.
 - Keep red_flags concise.
+- Breakdown contribution values are points against fixed category caps: REGULATORY max 36, PERSONNEL max 23, HIRING max 18, NEWS/MACRO max 23.
 - Treat market speculation, IPO or listing chatter, valuation changes, funding, major contracts, regulatory or litigation pressure, leadership shifts, restructuring, production delays, and supply-chain issues as valid monitoring evidence when they appear in the signals.
 - Use "Insufficient signals" only when the supplied signals are trivial, stale, duplicate, or unrelated to ${company}.
 - If the evidence is meaningful but not a definitive acquisition or crisis signal, classify it as "Monitor closely" rather than skipping it.
